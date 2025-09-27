@@ -1,13 +1,13 @@
 import { parseCDRBytes } from "@mono424/cdr-ts";
 import { OccupancyGrid, occupancyGridSchema } from "./map";
-import { MessageWriter } from '@lichtblick/omgidl-serialization';
-import { navigateToPoseDefinition, NavigateToPoseGoal } from './idl';
+import { MessageWriter } from "@lichtblick/omgidl-serialization";
+import { navigateToPoseDefinition, NavigateToPoseGoal } from "./idl";
 
 // Создаём writer один раз (можно кэшировать)
 const goalWriter = new MessageWriter(
-  'nav2_msgs::NavigateToPose_Goal',
+  "nav2_msgs::NavigateToPose_Goal",
   navigateToPoseDefinition,
-  { writeExtensible: false } // XCDR не требуется
+  { kind: 0x01 } // XCDR не требуется
 );
 
 // DOM элементы
@@ -246,7 +246,11 @@ function findFrontiers(mapMsg: OccupancyGrid): Array<{ x: number; y: number }> {
   const data = mapMsg.data; // <-- Это и есть массив int8[]
 
   if (!data || width === 0 || height === 0) {
-    console.warn('Некорректные данные карты:', { width, height, hasData: !!data });
+    console.warn("Некорректные данные карты:", {
+      width,
+      height,
+      hasData: !!data,
+    });
     return [];
   }
 
@@ -264,12 +268,17 @@ function findFrontiers(mapMsg: OccupancyGrid): Array<{ x: number; y: number }> {
 
       // Проверяем соседей (с защитой от выхода за границы)
       const neighbors = [
-        data[idx - width - 1], data[idx - width], data[idx - width + 1],
-        data[idx - 1], /* self */ data[idx + 1],
-        data[idx + width - 1], data[idx + width], data[idx + width + 1]
+        data[idx - width - 1],
+        data[idx - width],
+        data[idx - width + 1],
+        data[idx - 1],
+        /* self */ data[idx + 1],
+        data[idx + width - 1],
+        data[idx + width],
+        data[idx + width + 1],
       ];
 
-      if (neighbors.some(v => v === 255)) {
+      if (neighbors.some((v) => v === 255)) {
         frontiers.push({ x, y });
       }
     }
@@ -304,16 +313,18 @@ async function sendGoal(robotName: string, goalX: number, goalY: number) {
   try {
     // Формируем цель
     const goal: NavigateToPoseGoal = {
-      pose: {
-        header: {
-          stamp: { sec: Math.floor(Date.now() / 1000), nanosec: (Date.now() % 1000) * 1_000_000 },
-          frame_id: 'map'
+      header: {
+        stamp: {
+          sec: Math.floor(Date.now() / 1000),
+          nanosec: (Date.now() % 1000) * 1_000_000,
         },
-        pose: {
-          position: { x: goalX, y: goalY, z: 0 },
-          orientation: { x: 0, y: 0, z: 0, w: 1 }
-        }
-      }
+        frame_id: "map",
+      },
+      pose: {
+        position: { x: goalX, y: goalY, z: 0 },
+        orientation: { x: 0, y: 0, z: 0, w: 1 },
+      },
+      behavior_tree: "",
     };
 
     // Сериализуем в CDR
@@ -324,11 +335,11 @@ async function sendGoal(robotName: string, goalX: number, goalY: number) {
     const url = `https://zenoh.robbox.online/${key}`;
 
     const response = await fetch(url, {
-      method: 'PUT',
+      method: "POST",
       headers: {
-        'Content-Type': 'application/octet-stream'
-      },      
-      body: cdrBytes
+        "Content-Type": "application/octet-stream",
+      },
+      body: cdrBytes,
     });
 
     if (!response.ok) {
@@ -336,10 +347,14 @@ async function sendGoal(robotName: string, goalX: number, goalY: number) {
     }
 
     console.log(`✅ Цель отправлена: (${goalX}, ${goalY})`);
-    statusEl.textContent = `🧭 Цель отправлена: (${goalX.toFixed(2)}, ${goalY.toFixed(2)})`;
+    statusEl.textContent = `🧭 Цель отправлена: (${goalX.toFixed(
+      2
+    )}, ${goalY.toFixed(2)})`;
   } catch (err) {
-    console.error('❌ Ошибка отправки цели:', err);
-    statusEl.textContent = `⚠️ Ошибка отправки цели: ${err instanceof Error ? err.message : String(err)}`;
+    console.error("❌ Ошибка отправки цели:", err);
+    statusEl.textContent = `⚠️ Ошибка отправки цели: ${
+      err instanceof Error ? err.message : String(err)
+    }`;
   }
 }
 

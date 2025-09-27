@@ -1,6 +1,6 @@
 // idl.ts
 
-import { parseIDL } from '@lichtblick/omgidl-parser';
+import { parseIDL } from "@lichtblick/omgidl-parser";
 
 // Полное определение сообщений, используемых в NavigateToPose
 const NAVIGATE_TO_POSE_IDL = `
@@ -52,20 +52,20 @@ const NAVIGATE_TO_POSE_IDL = `
   module nav2_msgs {
     struct NavigateToPose_Goal {
       geometry_msgs::PoseStamped pose;
+      string behavior_tree;
     };
   };
 `;
 
 export const navigateToPoseDefinition = parseIDL(NAVIGATE_TO_POSE_IDL);
 export type NavigateToPoseGoal = {
-  pose: {
-    header: {
-      stamp: { sec: number; nanosec: number };
-      frame_id: string;
-    };
-    pose: {
-      position: { x: number; y: number; z: number };
-      orientation: { x: number; y: number; z: number; w: number };
-    };
+  header: {
+    stamp: { sec: number; nanosec: number };
+    frame_id: string;
   };
+  pose: {
+    position: { x: number; y: number; z: number };
+    orientation: { x: number; y: number; z: number; w: number };
+  };
+  behavior_tree: string;
 };
