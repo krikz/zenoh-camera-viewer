@@ -295,18 +295,96 @@ const tfSchema = {
   },
 } as const;
 
+// Схема для nav_msgs/Path
+const pathSchema = {
+  type: "dictionary",
+  items: {
+    header: {
+      index: 0,
+      value: {
+        type: "dictionary",
+        items: {
+          stamp: {
+            index: 0,
+            value: {
+              type: "dictionary",
+              items: {
+                sec: {
+                  index: 0,
+                  value: { type: "uint", len: 32, format: "number" },
+                },
+                nanosec: {
+                  index: 1,
+                  value: { type: "uint", len: 32, format: "number" },
+                },
+              },
+            },
+          },
+          frame_id: { index: 1, value: { type: "string" } },
+        },
+      },
+    },
+    poses: {
+      index: 1,
+      value: {
+        type: "sequence",
+        itemSchema: {
+          type: "dictionary",
+          items: {
+            pose: {
+              index: 0,
+              value: {
+                type: "dictionary",
+                items: {
+                  position: {
+                    index: 0,
+                    value: {
+                      type: "dictionary",
+                      items: {
+                        x: { index: 0, value: { type: "float", len: 64, format: "number" } },
+                        y: { index: 1, value: { type: "float", len: 64, format: "number" } },
+                        z: { index: 2, value: { type: "float", len: 64, format: "number" } },
+                      },
+                    },
+                  },
+                  orientation: {
+                    index: 1,
+                    value: {
+                      type: "dictionary",
+                      items: {
+                        x: { index: 0, value: { type: "float", len: 64, format: "number" } },
+                        y: { index: 1, value: { type: "float", len: 64, format: "number" } },
+                        z: { index: 2, value: { type: "float", len: 64, format: "number" } },
+                        w: { index: 3, value: { type: "float", len: 64, format: "number" } },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  },
+} as const;
+
 // SSE источники
 let cameraEventSource: EventSource | null = null;
 let mapEventSource: EventSource | null = null;
 let lidarEventSource: EventSource | null = null;
 let odometryEventSource: EventSource | null = null;
 let tfEventSource: EventSource | null = null;
+let planEventSource: EventSource | null = null;
 
 // Текущая карта для отрисовки лидара
 let currentMap: OccupancyGrid | null = null;
 
 // Текущая позиция робота в системе координат карты (map)
 let robotPosition = { x: 0, y: 0, theta: 0 };
+
+// Текущая траектория из /plan
+let currentPlan: any[] = [];
 
 // Трансформация от map к odom
 let mapToOdom = {
@@ -378,6 +456,7 @@ function setupRobotFeeds(robotName: string) {
   startLidarFeed(robotName);
   startOdometryFeed(robotName);
   startTfFeed(robotName);
+  startPlanFeed(robotName);
 }
 
 function cleanupRobotFeeds() {
@@ -407,11 +486,19 @@ function cleanupRobotFeeds() {
     tfEventSource.close();
     tfEventSource = null;
   }
+  if (planEventSource) {
+    planEventSource.removeEventListener("PUT", handlePlanEvent);
+    planEventSource.close();
+    planEventSource = null;
+  }
   
   // Очищаем лидарный холст при смене робота
   if (lidarCtx) {
     lidarCtx.clearRect(0, 0, lidarCanvas.width, lidarCanvas.height);
   }
+  
+  // Очищаем текущую траекторию
+  currentPlan = [];
 }
 
 // Обработчики событий
@@ -568,6 +655,40 @@ function handleTfEvent(event: MessageEvent) {
     }
   } catch (err) {
     console.error("[SSE TF] Обработка падения:", err);
+  }
+}
+
+function handlePlanEvent(event: MessageEvent) {
+  try {
+    const sample = JSON.parse(event.data) as { value: string };
+    if (!sample.value) return;
+
+    // Декодируем base64
+    const binaryString = atob(sample.value);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+
+    // Парсим CDR
+    const parsed = parseCDRBytes(bytes, pathSchema, {
+      maxSequenceSize: 10_000,
+    });
+
+    const path = parsed.payload;
+    
+    // Сохраняем траекторию
+    currentPlan = path.poses.map((pose: any) => ({
+      x: pose.pose.position.x,
+      y: pose.pose.position.y
+    }));
+    
+    // Перерисовываем лидар, чтобы обновить траекторию
+    if (currentMap) {
+      renderLidar(null);
+    }
+  } catch (err) {
+    console.error("[SSE Plan] Обработка падения:", err);
   }
 }
 
@@ -730,6 +851,33 @@ function startTfFeed(robotName: string) {
   });
 
   tfEventSource.addEventListener("PUT", handleTfEvent);
+}
+
+function startPlanFeed(robotName: string) {
+  const key = `robots/${robotName}/plan`;
+  const url = `${ZENOH_REST_BASE}/${key}`;
+
+  // Проверка поддержки EventSource
+  if (typeof EventSource === "undefined") {
+    console.warn(
+      "EventSource не поддерживается. План не будет отображаться."
+    );
+    return;
+  }
+
+  planEventSource = new EventSource(url);
+
+  planEventSource.addEventListener("open", () => {
+    console.log("[SSE] Подключено к плану:", key);
+  });
+
+  planEventSource.addEventListener("error", (err) => {
+    console.error("[SSE Plan] Ошибка:", err);
+    planEventSource?.close();
+    planEventSource = null;
+  });
+
+  planEventSource.addEventListener("PUT", handlePlanEvent);
 }
 
 function renderImage(msg: any) {
@@ -1085,6 +1233,52 @@ function renderLidar(scan: any) {
 
   const angleCount = ranges.length;
   
+  // Отрисовка векторов направления для лидара (каждый 5-й луч)
+  lidarCtx.strokeStyle = "rgba(255, 165, 0, 0.3)";
+  lidarCtx.lineWidth = 0.5;
+  
+  for (let i = 0; i < angleCount; i += 5) {
+    const range = ranges[i];
+    if (range === undefined || range === null || range === Infinity || 
+        range < (scan?.range_min || 0) || range > (scan?.range_max || Infinity)) continue;
+
+    // Поворот на 90 градусов против часовой стрелки
+    const angle = angle_min + i * angle_increment + Math.PI/2;
+    
+    // Преобразуем в координаты относительно робота
+    const x = range * Math.cos(angle);
+    const y = range * Math.sin(angle);
+
+    // Мировые координаты точки лидара
+    const worldX = robotPosition.x + x;
+    const worldY = robotPosition.y + y;
+
+    // Правильное преобразование в координаты карты
+    const mapX = (worldX - origin.position.x) / resolution;
+    const mapY = (worldY - origin.position.y) / resolution;
+
+    // Проверяем, что точка находится в пределах карты
+    if (mapX < 0 || mapX >= width || mapY < 0 || mapY >= height) continue;
+
+    // Преобразуем в пиксели на холсте
+    const pixelX = offsetX + mapX * scale;
+    const pixelY = offsetY + (height - mapY) * scale;
+    
+    // Рисуем вектор от робота к точке
+    const robotMapX = (robotPosition.x - origin.position.x) / resolution;
+    const robotMapY = (robotPosition.y - origin.position.y) / resolution;
+    const robotPixelX = offsetX + robotMapX * scale;
+    const robotPixelY = offsetY + (height - robotMapY) * scale;
+
+    lidarCtx.beginPath();
+    lidarCtx.moveTo(robotPixelX, robotPixelY);
+    lidarCtx.lineTo(pixelX, pixelY);
+    lidarCtx.stroke();
+  }
+  
+  // Основная отрисовка точек лидара
+  lidarCtx.fillStyle = "rgba(0, 255, 0, 0.7)";
+  
   for (let i = 0; i < angleCount; i++) {
     const range = ranges[i];
     if (range === undefined || range === null || range === Infinity || 
@@ -1133,8 +1327,8 @@ function renderLidar(scan: any) {
   lidarCtx.fill();
   
   // Отрисовка направления робота
-  const directionX = robotPixelX + 8 * Math.cos(robotPosition.theta);
-  const directionY = robotPixelY - 8 * Math.sin(robotPosition.theta); // Инвертируем Y для canvas
+  const directionX = robotPixelX + 10 * Math.cos(robotPosition.theta);
+  const directionY = robotPixelY - 10 * Math.sin(robotPosition.theta); // Инвертируем Y для canvas
   
   lidarCtx.beginPath();
   lidarCtx.moveTo(robotPixelX, robotPixelY);
@@ -1142,7 +1336,67 @@ function renderLidar(scan: any) {
   lidarCtx.strokeStyle = "rgba(0, 0, 255, 0.7)";
   lidarCtx.lineWidth = 2;
   lidarCtx.stroke();
+  
+  // Отрисовка текущей цели (если есть)
+  if (currentGoal) {
+    const goalMapX = (currentGoal.x - origin.position.x) / resolution;
+    const goalMapY = (currentGoal.y - origin.position.y) / resolution;
+    
+    const goalPixelX = offsetX + goalMapX * scale;
+    const goalPixelY = offsetY + (height - goalMapY) * scale;
+    
+    // Отрисовка цели как квадрата
+    lidarCtx.fillStyle = "rgba(255, 0, 0, 0.5)";
+    lidarCtx.fillRect(goalPixelX - 4, goalPixelY - 4, 8, 8);
+    
+    // Линия от робота к цели
+    lidarCtx.beginPath();
+    lidarCtx.moveTo(robotPixelX, robotPixelY);
+    lidarCtx.lineTo(goalPixelX, goalPixelY);
+    lidarCtx.strokeStyle = "rgba(255, 0, 0, 0.3)";
+    lidarCtx.lineWidth = 1;
+    lidarCtx.stroke();
+  }
+  
+  // Отрисовка траектории из /plan
+  if (currentPlan && currentPlan.length > 1) {
+    lidarCtx.beginPath();
+    lidarCtx.moveTo(
+      offsetX + ((currentPlan[0].x - origin.position.x) / resolution) * scale,
+      offsetY + (height - (currentPlan[0].y - origin.position.y) / resolution) * scale
+    );
+    
+    for (let i = 1; i < currentPlan.length; i++) {
+      const px = offsetX + ((currentPlan[i].x - origin.position.x) / resolution) * scale;
+      const py = offsetY + (height - (currentPlan[i].y - origin.position.y) / resolution) * scale;
+      
+      lidarCtx.lineTo(px, py);
+    }
+    
+    lidarCtx.strokeStyle = "rgba(0, 0, 255, 0.7)";
+    lidarCtx.lineWidth = 2;
+    lidarCtx.stroke();
+    
+    // Отрисовка текущей точки траектории
+    if (currentPlan.length > 0) {
+      const currentGoalX = currentPlan[0].x;
+      const currentGoalY = currentPlan[0].y;
+      
+      const goalMapX = (currentGoalX - origin.position.x) / resolution;
+      const goalMapY = (currentGoalY - origin.position.y) / resolution;
+      
+      const goalPixelX = offsetX + goalMapX * scale;
+      const goalPixelY = offsetY + (height - goalMapY) * scale;
+      
+      // Отрисовка текущей цели как квадрата
+      lidarCtx.fillStyle = "rgba(0, 255, 0, 0.7)";
+      lidarCtx.fillRect(goalPixelX - 4, goalPixelY - 4, 8, 8);
+    }
+  }
 }
 
 // Сохраняем последний лидарный скан для перерисовки при изменении позиции робота
 let lastLidarScan: any = null;
+
+// Сохраняем текущую цель для отрисовки
+let currentGoal: { x: number, y: number } | null = null;
