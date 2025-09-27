@@ -22,7 +22,7 @@ const cameraCanvas = document.getElementById(
 const mapCtx = mapCanvas.getContext("2d", { willReadFrequently: true })!;
 const cameraCtx = cameraCanvas.getContext("2d", { willReadFrequently: true })!;
 
-// Базовый URL — ТОЧНО как ты сказал
+// Базовый URL — исправленные пробелы
 const ZENOH_REST_BASE = "https://zenoh.robbox.online";
 
 // Схема для sensor_msgs/Image
@@ -72,19 +72,19 @@ const imageSchema = {
   },
 } as const;
 
-// Убираем дублирование при обновлении
-let pollInterval: any = null;
+// SSE источники
+let cameraEventSource: EventSource | null = null;
+let mapEventSource: EventSource | null = null;
 
 async function fetchRobots() {
   try {
-    // 🔥 ТОЧНО ТАК, КАК ТЫ СКАЗАЛ
     const url = `${ZENOH_REST_BASE}/robots/**`;
     const resp = await fetch(url);
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
 
     const data: Array<{ key: string }> = await resp.json();
 
-    // Извлекаем уникальные имена роботов (второй уровень)
+    // Извлекаем уникальные имена роботов
     const robotsSet = new Set<string>();
     for (const item of data) {
       const parts = item.key.split("/");
@@ -113,17 +113,17 @@ async function fetchRobots() {
     robotSelect.onchange = () => {
       const robotName = robotSelect.value;
       if (robotName) {
-        statusEl.textContent = `Загрузка камеры: ${robotName}`;
-        startPollingCamera(robotName);
+        statusEl.textContent = `📡 Подключение к ${robotName}...`;
+        setupRobotFeeds(robotName);
       } else {
+        cleanupRobotFeeds();
         statusEl.textContent = "Выберите робота";
-        clearInterval(pollInterval);
       }
     };
 
-    // Если был выбран робот — запустить сразу
+    // Автоматическая загрузка при наличии выбора
     if (robotSelect.value) {
-      startPollingCamera(robotSelect.value);
+      setupRobotFeeds(robotSelect.value);
     }
   } catch (err) {
     console.error("[REST] Ошибка получения списка роботов:", err);
@@ -133,35 +133,57 @@ async function fetchRobots() {
   }
 }
 
-function startPollingCamera(robotName: string) {
-  clearInterval(pollInterval);
+function setupRobotFeeds(robotName: string) {
+  cleanupRobotFeeds();
+  startCameraFeed(robotName);
+  startMapFeed(robotName);
+}
 
-  async function poll() {
+function cleanupRobotFeeds() {
+  if (cameraEventSource) {
+    cameraEventSource.close();
+    cameraEventSource = null;
+  }
+  if (mapEventSource) {
+    mapEventSource.close();
+    mapEventSource = null;
+  }
+}
+
+function startCameraFeed(robotName: string) {
+  const key = `robots/${robotName}/robot_cam`;
+  const url = `${ZENOH_REST_BASE}/${key}`;
+
+  // Проверка поддержки EventSource
+  if (typeof EventSource === "undefined") {
+    statusEl.textContent =
+      "⚠️ Браузер не поддерживает SSE. Используйте polling.";
+    return;
+  }
+
+  cameraEventSource = new EventSource(url);
+
+  cameraEventSource.onopen = () => {
+    console.log("[SSE] Подключено к камере:", key);
+    statusEl.textContent = `🎥 Получение видео...`;
+  };
+
+  cameraEventSource.onerror = (err) => {
+    console.error("[SSE Camera] Ошибка:", err);
+    statusEl.textContent = "⚠️ Ошибка SSE камеры";
+    cameraEventSource?.close();
+    cameraEventSource = null;
+  };
+  cameraEventSource.addEventListener("PUT", (event: MessageEvent<any>) => {
     try {
-      const key = `robots/${robotName}/robot_cam`;
-      const url = `${ZENOH_REST_BASE}/${key}`;
+      const sample = JSON.parse(event.data) as {
+        value: string;
+      };
 
-      const resp = await fetch(url);
-      if (!resp.ok) {
-        statusEl.textContent = "❌ Нет данных с камеры";
-        return;
-      }
+      if (!sample.value) return;
 
-      // Правильная типизация ответа
-      const samples: Array<{
-        key: string;
-        value: string; // Это строка Base64!
-        encoding: string;
-        timestamp: string;
-      }> = await resp.json();
-
-      if (!samples || samples.length === 0 || !samples[0].value) {
-        statusEl.textContent = "⚠️ Пустое изображение";
-        return;
-      }
-
-      const base64Data = samples[0].value; // ⬅️ Вот он: base64 в поле `value`
-      const binaryString = atob(base64Data);
+      // Декодируем base64
+      const binaryString = atob(sample.value);
       const bytes = new Uint8Array(binaryString.length);
       for (let i = 0; i < binaryString.length; i++) {
         bytes[i] = binaryString.charCodeAt(i);
@@ -169,24 +191,67 @@ function startPollingCamera(robotName: string) {
 
       // Парсим CDR
       const parsed = parseCDRBytes(bytes, imageSchema, {
-        maxSequenceSize: 300000,
+        maxSequenceSize: 300_000,
       });
       const msg = parsed.payload;
 
-      statusEl.textContent = `✅ ${msg.width}x${msg.height}, ${msg.encoding}`;
-
+      statusEl.textContent = `🎥 ${msg.width}x${msg.height}, ${msg.encoding}`;
       renderImage(msg);
     } catch (err) {
-      console.error("[Camera Poll] Ошибка:", err);
-      statusEl.textContent = "⚠️ Ошибка загрузки";
+      console.error("[SSE Camera] Обработка падения:", err);
+      statusEl.textContent = "⚠️ Ошибка обработки кадра";
     }
+  });
+}
+
+function startMapFeed(robotName: string) {
+  const key = `robots/${robotName}/map`;
+  const url = `${ZENOH_REST_BASE}/${key}`;
+
+  // Проверка поддержки EventSource
+  if (typeof EventSource === "undefined") {
+    console.warn(
+      "EventSource не поддерживается. Карта не будет обновляться автоматически."
+    );
+    return;
   }
 
-  // Первый раз сразу
-  poll();
+  mapEventSource = new EventSource(url);
 
-  // Затем каждые 500 мс
-  pollInterval = setInterval(poll, 500);
+  mapEventSource.onopen = () => {
+    console.log("[SSE] Подключено к карте:", key);
+  };
+
+  mapEventSource.onerror = (err) => {
+    console.error("[SSE Map] Ошибка:", err);
+    mapEventSource?.close();
+    mapEventSource = null;
+  };
+
+  mapEventSource.addEventListener("PUT", (event: MessageEvent<any>) => {
+    try {
+      const sample = JSON.parse(event.data) as { value: string };
+
+      if (!sample.value) return;
+
+      // Декодируем base64
+      const binaryString = atob(sample.value);
+      const bytes = new Uint8Array(binaryString.length);
+      for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+
+      // Парсим CDR
+      const parsed = parseCDRBytes(bytes, occupancyGridSchema, {
+        maxSequenceSize: 1_000_000,
+      });
+
+      const mapMsg = parsed.payload;
+      renderMap(mapMsg);
+    } catch (err) {
+      console.error("[SSE Map] Обработка падения:", err);
+    }
+  });
 }
 
 function renderImage(msg: any) {
@@ -243,7 +308,7 @@ fetchRobots().catch(console.error);
 
 function findFrontiers(mapMsg: OccupancyGrid): Array<{ x: number; y: number }> {
   const { width, height } = mapMsg.info;
-  const data = mapMsg.data; // <-- Это и есть массив int8[]
+  const data = mapMsg.data;
 
   if (!data || width === 0 || height === 0) {
     console.warn("Некорректные данные карты:", {
@@ -266,7 +331,7 @@ function findFrontiers(mapMsg: OccupancyGrid): Array<{ x: number; y: number }> {
       // Только свободные ячейки
       if (data[idx] !== 0) continue;
 
-      // Проверяем соседей (с защитой от выхода за границы)
+      // Проверяем соседей
       const neighbors = [
         data[idx - width - 1],
         data[idx - width],
@@ -330,9 +395,9 @@ async function sendGoal(robotName: string, goalX: number, goalY: number) {
     // Сериализуем в CDR
     const cdrBytes: Uint8Array = goalWriter.writeMessage(goal);
 
-    // URL для action
+    // URL для action (без пробелов!)
     const key = `robots/${robotName}/navigate_to_pose/_action/send_goal`;
-    const url = `https://zenoh.robbox.online/${key}`;
+    const url = `${ZENOH_REST_BASE}/${key}`;
 
     const response = await fetch(url, {
       method: "POST",
@@ -363,6 +428,8 @@ async function startExploration(robotName: string) {
 
   while (explorationActive) {
     try {
+      // Карта теперь приходит через SSE, но на всякий случай оставим fetchMap
+      // как fallback если SSE не работает
       const map = await fetchMap(robotName);
       if (!map) continue;
 
@@ -378,7 +445,8 @@ async function startExploration(robotName: string) {
         break;
       }
 
-      const goalCell = chooseClosestFrontier(unvisited, 100, 100); // TODO: get real pose
+      // TODO: Получить реальную позицию робота
+      const goalCell = chooseClosestFrontier(unvisited, 100, 100);
       if (!goalCell) break;
 
       visitedFrontiers.add(`${goalCell.x},${goalCell.y}`);
@@ -389,10 +457,6 @@ async function startExploration(robotName: string) {
         goalCell.y * map.info.resolution + map.info.origin.position.y;
 
       await sendGoal(robotName, goalX, goalY);
-
-      statusEl.textContent = `🧭 Цель отправлена: (${goalX.toFixed(
-        2
-      )}, ${goalY.toFixed(2)})`;
 
       // Ждём 5 секунд перед следующим шагом
       await new Promise((r) => setTimeout(r, 5000));
@@ -427,6 +491,7 @@ exploreBtn.onclick = () => {
     startExploration(robotName);
   }
 };
+
 function resizeCanvases() {
   // Карта — занимает всё свободное место
   const rect = mapCanvas.parentElement!.getBoundingClientRect();
@@ -445,7 +510,7 @@ window.addEventListener("resize", resizeCanvases);
 async function fetchMap(robotName: string): Promise<OccupancyGrid | null> {
   try {
     const key = `robots/${robotName}/map`;
-    const url = `https://zenoh.robbox.online/${key}`;
+    const url = `${ZENOH_REST_BASE}/${key}`;
     const resp = await fetch(url);
     const samples: Array<{ value: string }> = await resp.json();
 
@@ -458,9 +523,7 @@ async function fetchMap(robotName: string): Promise<OccupancyGrid | null> {
       maxSequenceSize: 1_000_000,
     });
 
-    const mapMsg = parsed.payload;
-    renderMap(mapMsg);
-    return mapMsg;
+    return parsed.payload;
   } catch (err) {
     console.error("[Map] Ошибка:", err);
     return null;
