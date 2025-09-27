@@ -1,10 +1,26 @@
 import { parseCDRBytes } from "@mono424/cdr-ts";
+import { OccupancyGrid, occupancyGridSchema } from "./map";
+import { MessageWriter } from '@lichtblick/omgidl-serialization';
+import { navigateToPoseDefinition, NavigateToPoseGoal } from './idl';
+
+// Создаём writer один раз (можно кэшировать)
+const goalWriter = new MessageWriter(
+  'nav2_msgs::NavigateToPose_Goal',
+  navigateToPoseDefinition,
+  { writeExtensible: false } // XCDR не требуется
+);
 
 // DOM элементы
 const robotSelect = document.getElementById("robotSelect") as HTMLSelectElement;
+const exploreBtn = document.getElementById("exploreBtn") as HTMLButtonElement;
 const statusEl = document.getElementById("status") as HTMLElement;
-const canvas = document.getElementById("cameraCanvas") as HTMLCanvasElement;
-const ctx = canvas.getContext("2d", { willReadFrequently: true })!;
+const mapCanvas = document.getElementById("mapCanvas") as HTMLCanvasElement;
+const cameraCanvas = document.getElementById(
+  "cameraCanvas"
+) as HTMLCanvasElement;
+
+const mapCtx = mapCanvas.getContext("2d", { willReadFrequently: true })!;
+const cameraCtx = cameraCanvas.getContext("2d", { willReadFrequently: true })!;
 
 // Базовый URL — ТОЧНО как ты сказал
 const ZENOH_REST_BASE = "https://zenoh.robbox.online";
@@ -152,7 +168,9 @@ function startPollingCamera(robotName: string) {
       }
 
       // Парсим CDR
-      const parsed = parseCDRBytes(bytes, imageSchema,{maxSequenceSize:300000});
+      const parsed = parseCDRBytes(bytes, imageSchema, {
+        maxSequenceSize: 300000,
+      });
       const msg = parsed.payload;
 
       statusEl.textContent = `✅ ${msg.width}x${msg.height}, ${msg.encoding}`;
@@ -185,9 +203,9 @@ function renderImage(msg: any) {
     );
   }
 
-  canvas.width = width;
-  canvas.height = height;
-  const imageData = ctx.createImageData(width, height);
+  cameraCanvas.width = width;
+  cameraCanvas.height = height;
+  const imageData = cameraCtx.createImageData(width, height);
 
   // Конвертируем в RGBA
   for (let i = 0; i < data.length; i += 1) {
@@ -217,8 +235,250 @@ function renderImage(msg: any) {
     }
   }
 
-  ctx.putImageData(imageData, 0, 0);
+  cameraCtx.putImageData(imageData, 0, 0);
 }
 
 // Запуск
 fetchRobots().catch(console.error);
+
+function findFrontiers(mapMsg: OccupancyGrid): Array<{ x: number; y: number }> {
+  const { width, height } = mapMsg.info;
+  const data = mapMsg.data; // <-- Это и есть массив int8[]
+
+  if (!data || width === 0 || height === 0) {
+    console.warn('Некорректные данные карты:', { width, height, hasData: !!data });
+    return [];
+  }
+
+  const frontiers: Array<{ x: number; y: number }> = [];
+
+  for (let y = 1; y < height - 1; y++) {
+    for (let x = 1; x < width - 1; x++) {
+      const idx = y * width + x;
+
+      // Проверяем, что индекс в пределах массива
+      if (idx >= data.length) continue;
+
+      // Только свободные ячейки
+      if (data[idx] !== 0) continue;
+
+      // Проверяем соседей (с защитой от выхода за границы)
+      const neighbors = [
+        data[idx - width - 1], data[idx - width], data[idx - width + 1],
+        data[idx - 1], /* self */ data[idx + 1],
+        data[idx + width - 1], data[idx + width], data[idx + width + 1]
+      ];
+
+      if (neighbors.some(v => v === 255)) {
+        frontiers.push({ x, y });
+      }
+    }
+  }
+
+  return frontiers;
+}
+
+function chooseClosestFrontier(
+  frontiers: Array<{ x: number; y: number }>,
+  robotCellX: number,
+  robotCellY: number
+): { x: number; y: number } | null {
+  let closest = null;
+  let minDist = Infinity;
+
+  for (const f of frontiers) {
+    const dx = f.x - robotCellX;
+    const dy = f.y - robotCellY;
+    const dist = dx * dx + dy * dy;
+
+    if (dist < minDist) {
+      minDist = dist;
+      closest = f;
+    }
+  }
+
+  return closest;
+}
+
+async function sendGoal(robotName: string, goalX: number, goalY: number) {
+  try {
+    // Формируем цель
+    const goal: NavigateToPoseGoal = {
+      pose: {
+        header: {
+          stamp: { sec: Math.floor(Date.now() / 1000), nanosec: (Date.now() % 1000) * 1_000_000 },
+          frame_id: 'map'
+        },
+        pose: {
+          position: { x: goalX, y: goalY, z: 0 },
+          orientation: { x: 0, y: 0, z: 0, w: 1 }
+        }
+      }
+    };
+
+    // Сериализуем в CDR
+    const cdrBytes: Uint8Array = goalWriter.writeMessage(goal);
+
+    // URL для action
+    const key = `robots/${robotName}/navigate_to_pose/_action/send_goal`;
+    const url = `https://zenoh.robbox.online/${key}`;
+
+    const response = await fetch(url, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/octet-stream'
+      },      
+      body: cdrBytes
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+    }
+
+    console.log(`✅ Цель отправлена: (${goalX}, ${goalY})`);
+    statusEl.textContent = `🧭 Цель отправлена: (${goalX.toFixed(2)}, ${goalY.toFixed(2)})`;
+  } catch (err) {
+    console.error('❌ Ошибка отправки цели:', err);
+    statusEl.textContent = `⚠️ Ошибка отправки цели: ${err instanceof Error ? err.message : String(err)}`;
+  }
+}
+
+async function startExploration(robotName: string) {
+  const visitedFrontiers = new Set<string>();
+
+  while (explorationActive) {
+    try {
+      const map = await fetchMap(robotName);
+      if (!map) continue;
+
+      const frontiers = findFrontiers(map);
+      const unvisited = frontiers.filter(
+        (f) => !visitedFrontiers.has(`${f.x},${f.y}`)
+      );
+
+      if (unvisited.length === 0) {
+        statusEl.textContent = "✅ Исследование завершено";
+        explorationActive = false;
+        exploreBtn.textContent = "▶️ Explore";
+        break;
+      }
+
+      const goalCell = chooseClosestFrontier(unvisited, 100, 100); // TODO: get real pose
+      if (!goalCell) break;
+
+      visitedFrontiers.add(`${goalCell.x},${goalCell.y}`);
+
+      const goalX =
+        goalCell.x * map.info.resolution + map.info.origin.position.x;
+      const goalY =
+        goalCell.y * map.info.resolution + map.info.origin.position.y;
+
+      await sendGoal(robotName, goalX, goalY);
+
+      statusEl.textContent = `🧭 Цель отправлена: (${goalX.toFixed(
+        2
+      )}, ${goalY.toFixed(2)})`;
+
+      // Ждём 5 секунд перед следующим шагом
+      await new Promise((r) => setTimeout(r, 5000));
+    } catch (err) {
+      console.error("Ошибка исследования:", err);
+      statusEl.textContent = "⚠️ Ошибка, продолжается...";
+      await new Promise((r) => setTimeout(r, 5000));
+    }
+  }
+}
+
+let explorationActive = false;
+
+exploreBtn.onclick = () => {
+  if (explorationActive) {
+    explorationActive = false;
+    exploreBtn.textContent = "▶️ Explore";
+    exploreBtn.classList.remove("stop");
+    exploreBtn.classList.add("play");
+    statusEl.textContent = "Исследование остановлено";
+  } else {
+    const robotName = robotSelect.value;
+    if (!robotName) {
+      statusEl.textContent = "❌ Сначала выберите робота";
+      return;
+    }
+    explorationActive = true;
+    exploreBtn.textContent = "⏹ Stop";
+    exploreBtn.classList.remove("play");
+    exploreBtn.classList.add("stop");
+    statusEl.textContent = "Исследование запущено...";
+    startExploration(robotName);
+  }
+};
+function resizeCanvases() {
+  // Карта — занимает всё свободное место
+  const rect = mapCanvas.parentElement!.getBoundingClientRect();
+  mapCanvas.width = rect.width;
+  mapCanvas.height = rect.height;
+
+  // Камера — фиксированная ширина, высота по пропорции
+  const camWidth = 240;
+  cameraCanvas.width = camWidth;
+  cameraCanvas.height = camWidth * 0.75; // 4:3
+}
+
+window.addEventListener("load", resizeCanvases);
+window.addEventListener("resize", resizeCanvases);
+
+async function fetchMap(robotName: string): Promise<OccupancyGrid | null> {
+  try {
+    const key = `robots/${robotName}/map`;
+    const url = `https://zenoh.robbox.online/${key}`;
+    const resp = await fetch(url);
+    const samples: Array<{ value: string }> = await resp.json();
+
+    if (!samples?.length || !samples[0].value) return null;
+
+    const base64 = samples[0].value;
+    const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+
+    const parsed = parseCDRBytes(bytes, occupancyGridSchema, {
+      maxSequenceSize: 1_000_000,
+    });
+
+    const mapMsg = parsed.payload;
+    renderMap(mapMsg);
+    return mapMsg;
+  } catch (err) {
+    console.error("[Map] Ошибка:", err);
+    return null;
+  }
+}
+
+function renderMap(msg: OccupancyGrid) {
+  const { width, height } = msg.info;
+  const data = msg.data;
+
+  // Масштабируем карту под размер canvas
+  const scale = Math.min(mapCanvas.width / width, mapCanvas.height / height);
+
+  const drawWidth = width * scale;
+  const drawHeight = height * scale;
+  const offsetX = (mapCanvas.width - drawWidth) / 2;
+  const offsetY = (mapCanvas.height - drawHeight) / 2;
+
+  mapCtx.clearRect(0, 0, mapCanvas.width, mapCanvas.height);
+
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const i = y * width + x;
+      let r = 0,
+        g = 0,
+        b = 0;
+
+      if (data[i] === -1) r = g = b = 127; // Unknown
+      else if (data[i] === 0) r = g = b = 255; // Free
+      else r = g = b = Math.max(0, 255 - data[i]); // Occupied
+
+      mapCtx.fillStyle = `rgb(${r},${g},${b})`;
+      mapCtx.fillRect(offsetX + x * scale, offsetY + y * scale, scale, scale);
+    }
+  }
+}

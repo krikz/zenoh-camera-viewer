@@ -3,55 +3,115 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Zenoh Robot Camera Viewer</title>
+  <title>Zenoh Robot Explorer</title>
   <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
-      font-family: Arial, sans-serif;
-      margin: 20px;
-      background: #f5f5f5;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f0f2f5;
+      color: #333;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
     }
-    .container {
-      max-width: 900px;
-      margin: auto;
-      background: white;
-      padding: 20px;
-      border-radius: 10px;
+
+    /* Верхняя панель */
+    .navbar {
+      background: #1a1a1a;
+      color: white;
+      padding: 12px 20px;
+      display: flex;
+      align-items: center;
+      gap: 20px;
       box-shadow: 0 2px 10px rgba(0,0,0,0.1);
     }
-    h1 { text-align: center; color: #333; }
-    select {
-      width: 100%;
-      padding: 10px;
+
+    .navbar select, .navbar button {
+      padding: 8px 12px;
       font-size: 16px;
-      margin-bottom: 20px;
-      border: 1px solid #ccc;
-      border-radius: 5px;
+      border: none;
+      border-radius: 6px;
     }
-    canvas {
+
+    .navbar select {
+      background: white;
+      color: #333;
+    }
+
+    .navbar button {
+      cursor: pointer;
+      font-weight: 600;
+    }
+
+    .navbar button.play {
+      background: #4CAF50;
+      color: white;
+    }
+
+    .navbar button.stop {
+      background: #f44336;
+      color: white;
+    }
+
+    /* Основная область */
+    .main-area {
+      flex: 1;
+      position: relative;
+      overflow: hidden;
+      background: #ddd;
+    }
+
+    #mapCanvas {
       width: 100%;
-      max-height: 600px;
-      border: 1px solid #ddd;
-      border-radius: 5px;
+      height: 100%;
+      image-rendering: pixelated;
     }
+
+    /* Окно камеры в углу */
+    .camera-overlay {
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      width: 240px;
+      border: 3px solid #fff;
+      border-radius: 12px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+      overflow: hidden;
+      background: black;
+    }
+
+    #cameraCanvas {
+      width: 100%;
+      height: auto;
+      display: block;
+    }
+
     .status {
-      text-align: center;
-      color: #666;
-      font-style: italic;
-      margin: 10px 0;
+      position: absolute;
+      bottom: 20px;
+      left: 20px;
+      background: rgba(0,0,0,0.7);
+      color: #fff;
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 14px;
     }
   </style>
 </head>
 <body>
-  <div class="container">
-    <h1>📹 Robot Camera Viewer</h1>
-
-    <label for="robotSelect">Выберите робота:</label>
+  <nav class="navbar">
     <select id="robotSelect">
       <option value="">Загрузка...</option>
     </select>
+    <button id="exploreBtn">▶️ Explore</button>
+  </nav>
 
+  <div class="main-area">
+    <canvas id="mapCanvas"></canvas>
+    <div class="camera-overlay">
+      <canvas id="cameraCanvas"></canvas>
+    </div>
     <p class="status" id="status">Выберите робота</p>
-    <canvas id="cameraCanvas"></canvas>
   </div>
 
   <script type="module" src="./main.ts"></script>
