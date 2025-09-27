@@ -15,11 +15,13 @@ const robotSelect = document.getElementById("robotSelect") as HTMLSelectElement;
 const exploreBtn = document.getElementById("exploreBtn") as HTMLButtonElement;
 const statusEl = document.getElementById("status") as HTMLElement;
 const mapCanvas = document.getElementById("mapCanvas") as HTMLCanvasElement;
+const lidarCanvas = document.getElementById("lidarCanvas") as HTMLCanvasElement;
 const cameraCanvas = document.getElementById(
   "cameraCanvas"
 ) as HTMLCanvasElement;
 
 const mapCtx = mapCanvas.getContext("2d", { willReadFrequently: true })!;
+const lidarCtx = lidarCanvas.getContext("2d", { willReadFrequently: true })!;
 const cameraCtx = cameraCanvas.getContext("2d", { willReadFrequently: true })!;
 
 // Базовый URL — исправленные пробелы
@@ -72,9 +74,87 @@ const imageSchema = {
   },
 } as const;
 
+// Схема для sensor_msgs/LaserScan
+const laserScanSchema = {
+  type: "dictionary",
+  items: {
+    header: {
+      index: 0,
+      value: {
+        type: "dictionary",
+        items: {
+          stamp: {
+            index: 0,
+            value: {
+              type: "dictionary",
+              items: {
+                sec: {
+                  index: 0,
+                  value: { type: "uint", len: 32, format: "number" },
+                },
+                nanosec: {
+                  index: 1,
+                  value: { type: "uint", len: 32, format: "number" },
+                },
+              },
+            },
+          },
+          frame_id: { index: 1, value: { type: "string" } },
+        },
+      },
+    },
+    angle_min: {
+      index: 1,
+      value: { type: "float", len: 32, format: "number" },
+    },
+    angle_max: {
+      index: 2,
+      value: { type: "float", len: 32, format: "number" },
+    },
+    angle_increment: {
+      index: 3,
+      value: { type: "float", len: 32, format: "number" },
+    },
+    time_increment: {
+      index: 4,
+      value: { type: "float", len: 32, format: "number" },
+    },
+    scan_time: {
+      index: 5,
+      value: { type: "float", len: 32, format: "number" },
+    },
+    range_min: {
+      index: 6,
+      value: { type: "float", len: 32, format: "number" },
+    },
+    range_max: {
+      index: 7,
+      value: { type: "float", len: 32, format: "number" },
+    },
+    ranges: {
+      index: 8,
+      value: {
+        type: "sequence",
+        itemSchema: { type: "float", len: 32, format: "number" },
+      },
+    },
+    intensities: {
+      index: 9,
+      value: {
+        type: "sequence",
+        itemSchema: { type: "float", len: 32, format: "number" },
+      },
+    },
+  },
+} as const;
+
 // SSE источники
 let cameraEventSource: EventSource | null = null;
 let mapEventSource: EventSource | null = null;
+let lidarEventSource: EventSource | null = null;
+
+// Текущая карта для отрисовки лидара
+let currentMap: OccupancyGrid | null = null;
 
 async function fetchRobots() {
   try {
@@ -137,16 +217,112 @@ function setupRobotFeeds(robotName: string) {
   cleanupRobotFeeds();
   startCameraFeed(robotName);
   startMapFeed(robotName);
+  startLidarFeed(robotName);
 }
 
 function cleanupRobotFeeds() {
+  // Закрываем все EventSource
   if (cameraEventSource) {
+    cameraEventSource.removeEventListener("PUT", handleCameraEvent);
     cameraEventSource.close();
     cameraEventSource = null;
   }
   if (mapEventSource) {
+    mapEventSource.removeEventListener("PUT", handleMapEvent);
     mapEventSource.close();
     mapEventSource = null;
+  }
+  if (lidarEventSource) {
+    lidarEventSource.removeEventListener("PUT", handleLidarEvent);
+    lidarEventSource.close();
+    lidarEventSource = null;
+  }
+  
+  // Очищаем лидарный холст при смене робота
+  if (lidarCtx) {
+    lidarCtx.clearRect(0, 0, lidarCanvas.width, lidarCanvas.height);
+  }
+}
+
+// Обработчики событий
+function handleCameraEvent(event: MessageEvent) {
+  try {
+    const sample = JSON.parse(event.data) as { value: string };
+    if (!sample.value) return;
+
+    // Декодируем base64
+    const binaryString = atob(sample.value);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+
+    // Парсим CDR
+    const parsed = parseCDRBytes(bytes, imageSchema, {
+      maxSequenceSize: 300_000,
+    });
+    const msg = parsed.payload;
+
+    statusEl.textContent = `🎥 ${msg.width}x${msg.height}, ${msg.encoding}`;
+    renderImage(msg);
+  } catch (err) {
+    console.error("[SSE Camera] Обработка падения:", err);
+    statusEl.textContent = "⚠️ Ошибка обработки кадра";
+  }
+}
+
+function handleMapEvent(event: MessageEvent) {
+  try {
+    const sample = JSON.parse(event.data) as { value: string };
+    if (!sample.value) return;
+
+    // Декодируем base64
+    const binaryString = atob(sample.value);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+
+    // Парсим CDR
+    const parsed = parseCDRBytes(bytes, occupancyGridSchema, {
+      maxSequenceSize: 1_000_000,
+    });
+
+    const mapMsg = parsed.payload;
+    currentMap = mapMsg;
+    
+    // Очищаем лидарный холст при обновлении карты
+    if (lidarCtx) {
+      lidarCtx.clearRect(0, 0, lidarCanvas.width, lidarCanvas.height);
+    }
+    
+    renderMap(mapMsg);
+  } catch (err) {
+    console.error("[SSE Map] Обработка падения:", err);
+  }
+}
+
+function handleLidarEvent(event: MessageEvent) {
+  try {
+    const sample = JSON.parse(event.data) as { value: string };
+    if (!sample.value || !currentMap) return;
+
+    // Декодируем base64
+    const binaryString = atob(sample.value);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+
+    // Парсим CDR
+    const parsed = parseCDRBytes(bytes, laserScanSchema, {
+      maxSequenceSize: 10_000,
+    });
+
+    const scan = parsed.payload;
+    renderLidar(scan);
+  } catch (err) {
+    console.error("[SSE Lidar] Обработка падения:", err);
   }
 }
 
@@ -163,45 +339,19 @@ function startCameraFeed(robotName: string) {
 
   cameraEventSource = new EventSource(url);
 
-  cameraEventSource.onopen = () => {
+  cameraEventSource.addEventListener("open", () => {
     console.log("[SSE] Подключено к камере:", key);
     statusEl.textContent = `🎥 Получение видео...`;
-  };
+  });
 
-  cameraEventSource.onerror = (err) => {
+  cameraEventSource.addEventListener("error", (err) => {
     console.error("[SSE Camera] Ошибка:", err);
     statusEl.textContent = "⚠️ Ошибка SSE камеры";
     cameraEventSource?.close();
     cameraEventSource = null;
-  };
-  cameraEventSource.addEventListener("PUT", (event: MessageEvent<any>) => {
-    try {
-      const sample = JSON.parse(event.data) as {
-        value: string;
-      };
-
-      if (!sample.value) return;
-
-      // Декодируем base64
-      const binaryString = atob(sample.value);
-      const bytes = new Uint8Array(binaryString.length);
-      for (let i = 0; i < binaryString.length; i++) {
-        bytes[i] = binaryString.charCodeAt(i);
-      }
-
-      // Парсим CDR
-      const parsed = parseCDRBytes(bytes, imageSchema, {
-        maxSequenceSize: 300_000,
-      });
-      const msg = parsed.payload;
-
-      statusEl.textContent = `🎥 ${msg.width}x${msg.height}, ${msg.encoding}`;
-      renderImage(msg);
-    } catch (err) {
-      console.error("[SSE Camera] Обработка падения:", err);
-      statusEl.textContent = "⚠️ Ошибка обработки кадра";
-    }
   });
+
+  cameraEventSource.addEventListener("PUT", handleCameraEvent);
 }
 
 function startMapFeed(robotName: string) {
@@ -218,40 +368,44 @@ function startMapFeed(robotName: string) {
 
   mapEventSource = new EventSource(url);
 
-  mapEventSource.onopen = () => {
+  mapEventSource.addEventListener("open", () => {
     console.log("[SSE] Подключено к карте:", key);
-  };
+  });
 
-  mapEventSource.onerror = (err) => {
+  mapEventSource.addEventListener("error", (err) => {
     console.error("[SSE Map] Ошибка:", err);
     mapEventSource?.close();
     mapEventSource = null;
-  };
-
-  mapEventSource.addEventListener("PUT", (event: MessageEvent<any>) => {
-    try {
-      const sample = JSON.parse(event.data) as { value: string };
-
-      if (!sample.value) return;
-
-      // Декодируем base64
-      const binaryString = atob(sample.value);
-      const bytes = new Uint8Array(binaryString.length);
-      for (let i = 0; i < binaryString.length; i++) {
-        bytes[i] = binaryString.charCodeAt(i);
-      }
-
-      // Парсим CDR
-      const parsed = parseCDRBytes(bytes, occupancyGridSchema, {
-        maxSequenceSize: 1_000_000,
-      });
-
-      const mapMsg = parsed.payload;
-      renderMap(mapMsg);
-    } catch (err) {
-      console.error("[SSE Map] Обработка падения:", err);
-    }
   });
+
+  mapEventSource.addEventListener("PUT", handleMapEvent);
+}
+
+function startLidarFeed(robotName: string) {
+  const key = `robots/${robotName}/scan`;
+  const url = `${ZENOH_REST_BASE}/${key}`;
+
+  // Проверка поддержки EventSource
+  if (typeof EventSource === "undefined") {
+    console.warn(
+      "EventSource не поддерживается. Лидар не будет отображаться."
+    );
+    return;
+  }
+
+  lidarEventSource = new EventSource(url);
+
+  lidarEventSource.addEventListener("open", () => {
+    console.log("[SSE] Подключено к лидару:", key);
+  });
+
+  lidarEventSource.addEventListener("error", (err) => {
+    console.error("[SSE Lidar] Ошибка:", err);
+    lidarEventSource?.close();
+    lidarEventSource = null;
+  });
+
+  lidarEventSource.addEventListener("PUT", handleLidarEvent);
 }
 
 function renderImage(msg: any) {
@@ -497,6 +651,8 @@ function resizeCanvases() {
   const rect = mapCanvas.parentElement!.getBoundingClientRect();
   mapCanvas.width = rect.width;
   mapCanvas.height = rect.height;
+  lidarCanvas.width = rect.width;
+  lidarCanvas.height = rect.height;
 
   // Камера — фиксированная ширина, высота по пропорции
   const camWidth = 240;
@@ -531,7 +687,7 @@ async function fetchMap(robotName: string): Promise<OccupancyGrid | null> {
 }
 
 function renderMap(msg: OccupancyGrid) {
-  const { width, height } = msg.info;
+  const { width, height, resolution, origin } = msg.info;
   const data = msg.data;
 
   // Масштабируем карту под размер canvas
@@ -558,5 +714,60 @@ function renderMap(msg: OccupancyGrid) {
       mapCtx.fillStyle = `rgb(${r},${g},${b})`;
       mapCtx.fillRect(offsetX + x * scale, offsetY + y * scale, scale, scale);
     }
+  }
+}
+
+function renderLidar(scan: any) {
+  if (!currentMap || !lidarCtx) return;
+  
+  // Очищаем только лидарный холст
+  lidarCtx.clearRect(0, 0, lidarCanvas.width, lidarCanvas.height);
+  
+  const { width, height, resolution, origin } = currentMap.info;
+  const { ranges, angle_min, angle_max, angle_increment } = scan;
+
+  // Масштаб и смещение из renderMap
+  const scale = Math.min(mapCanvas.width / width, mapCanvas.height / height);
+  const drawWidth = width * scale;
+  const drawHeight = height * scale;
+  const offsetX = (mapCanvas.width - drawWidth) / 2;
+  const offsetY = (mapCanvas.height - drawHeight) / 2;
+
+  // Настройки отрисовки лидара
+  lidarCtx.strokeStyle = "rgba(0, 255, 0, 0.7)";
+  lidarCtx.fillStyle = "rgba(0, 255, 0, 0.7)";
+  lidarCtx.lineWidth = 1;
+
+  const angleCount = ranges.length;
+  
+  for (let i = 0; i < angleCount; i++) {
+    const range = ranges[i];
+    if (range === undefined || range === null || range === Infinity || 
+        range < scan.range_min || range > scan.range_max) continue;
+
+    // Поворот на 90 градусов против часовой стрелки (как в Python-примере)
+    // angles = list(map(lambda x: x*1j+cmath.pi/2j, np.arange(scan.angle_min, scan.angle_max, scan.angle_increment)))
+    const angle = angle_min + i * angle_increment + Math.PI/2;
+    
+    // Преобразуем в координаты относительно робота
+    const x = range * Math.cos(angle);
+    const y = range * Math.sin(angle);
+
+    // Преобразуем в координаты карты
+    // В ROS карта имеет начало в левом нижнем углу
+    // В нашем случае, origin - это позиция начала карты в мире
+    const mapX = (x + origin.position.x) / resolution;
+    const mapY = (y + origin.position.y) / resolution;
+
+    // Проверяем, что точка находится в пределах карты
+    if (mapX < 0 || mapX >= width || mapY < 0 || mapY >= height) continue;
+
+    // Преобразуем в пиксели на холсте
+    // В canvas Y растет вниз, поэтому инвертируем
+    const pixelX = offsetX + mapX * scale;
+    const pixelY = offsetY + (height - mapY) * scale;
+
+    // Рисуем точку
+    lidarCtx.fillRect(pixelX, pixelY, 2, 2);
   }
 }
