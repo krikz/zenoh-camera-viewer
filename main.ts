@@ -220,17 +220,99 @@ const odometrySchema = {
   },
 } as const;
 
+// Схема для tf2_msgs/TFMessage
+const tfSchema = {
+  type: "dictionary",
+  items: {
+    transforms: {
+      index: 0,
+      value: {
+        type: "sequence",
+        itemSchema: {
+          type: "dictionary",
+          items: {
+            header: {
+              index: 0,
+              value: {
+                type: "dictionary",
+                items: {
+                  stamp: {
+                    index: 0,
+                    value: {
+                      type: "dictionary",
+                      items: {
+                        sec: {
+                          index: 0,
+                          value: { type: "uint", len: 32, format: "number" },
+                        },
+                        nanosec: {
+                          index: 1,
+                          value: { type: "uint", len: 32, format: "number" },
+                        },
+                      },
+                    },
+                  },
+                  frame_id: { index: 1, value: { type: "string" } },
+                },
+              },
+            },
+            child_frame_id: { index: 1, value: { type: "string" } },
+            transform: {
+              index: 2,
+              value: {
+                type: "dictionary",
+                items: {
+                  translation: {
+                    index: 0,
+                    value: {
+                      type: "dictionary",
+                      items: {
+                        x: { index: 0, value: { type: "float", len: 64, format: "number" } },
+                        y: { index: 1, value: { type: "float", len: 64, format: "number" } },
+                        z: { index: 2, value: { type: "float", len: 64, format: "number" } },
+                      },
+                    },
+                  },
+                  rotation: {
+                    index: 1,
+                    value: {
+                      type: "dictionary",
+                      items: {
+                        x: { index: 0, value: { type: "float", len: 64, format: "number" } },
+                        y: { index: 1, value: { type: "float", len: 64, format: "number" } },
+                        z: { index: 2, value: { type: "float", len: 64, format: "number" } },
+                        w: { index: 3, value: { type: "float", len: 64, format: "number" } },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  },
+} as const;
+
 // SSE источники
 let cameraEventSource: EventSource | null = null;
 let mapEventSource: EventSource | null = null;
 let lidarEventSource: EventSource | null = null;
 let odometryEventSource: EventSource | null = null;
+let tfEventSource: EventSource | null = null;
 
 // Текущая карта для отрисовки лидара
 let currentMap: OccupancyGrid | null = null;
 
-// Текущая позиция робота
+// Текущая позиция робота в системе координат карты (map)
 let robotPosition = { x: 0, y: 0, theta: 0 };
+
+// Трансформация от map к odom
+let mapToOdom = {
+  translation: { x: 0, y: 0, z: 0 },
+  rotation: { x: 0, y: 0, z: 0, w: 1 }
+};
 
 async function fetchRobots() {
   try {
@@ -295,6 +377,7 @@ function setupRobotFeeds(robotName: string) {
   startMapFeed(robotName);
   startLidarFeed(robotName);
   startOdometryFeed(robotName);
+  startTfFeed(robotName);
 }
 
 function cleanupRobotFeeds() {
@@ -318,6 +401,11 @@ function cleanupRobotFeeds() {
     odometryEventSource.removeEventListener("PUT", handleOdometryEvent);
     odometryEventSource.close();
     odometryEventSource = null;
+  }
+  if (tfEventSource) {
+    tfEventSource.removeEventListener("PUT", handleTfEvent);
+    tfEventSource.close();
+    tfEventSource = null;
   }
   
   // Очищаем лидарный холст при смене робота
@@ -427,22 +515,85 @@ function handleOdometryEvent(event: MessageEvent) {
 
     const odom = parsed.payload;
     
-    // Извлекаем позицию
-    robotPosition.x = odom.pose.pose.position.x;
-    robotPosition.y = odom.pose.pose.position.y;
-    
-    // Извлекаем ориентацию (преобразуем кватернион в угол)
+    // Извлекаем позицию в системе odom
+    const odomX = odom.pose.pose.position.x;
+    const odomY = odom.pose.pose.position.y;
     const q = odom.pose.pose.orientation;
-    // Для 2D мы можем использовать упрощенное преобразование
-    robotPosition.theta = Math.atan2(2 * (q.w * q.z + q.x * q.y), 1 - 2 * (q.y * q.y + q.z * q.z));
     
-    // Перерисовываем лидар, так как позиция робота изменилась
+    // Преобразуем кватернион в угол для 2D
+    const odomTheta = Math.atan2(2 * (q.w * q.z + q.x * q.y), 1 - 2 * (q.y * q.y + q.z * q.z));
+    
+    // Преобразуем позицию из системы odom в систему map
+    const mapPose = transformOdomToMap(odomX, odomY, odomTheta);
+    
+    robotPosition = mapPose;
+    
+    // Перерисовываем лидар
     if (currentMap) {
       renderLidar(null); // null означает, что мы перерисовываем без новых данных лидара
     }
   } catch (err) {
     console.error("[SSE Odometry] Обработка падения:", err);
   }
+}
+
+function handleTfEvent(event: MessageEvent) {
+  try {
+    const sample = JSON.parse(event.data) as { value: string };
+    if (!sample.value) return;
+
+    // Декодируем base64
+    const binaryString = atob(sample.value);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+
+    // Парсим CDR
+    const parsed = parseCDRBytes(bytes, tfSchema, {
+      maxSequenceSize: 10_000,
+    });
+
+    const tfMsg = parsed.payload;
+    
+    // Ищем трансформацию от map к odom
+    for (const transform of tfMsg.transforms) {
+      if (transform.header.frame_id === "map" && transform.child_frame_id === "odom") {
+        mapToOdom = {
+          translation: transform.transform.translation,
+          rotation: transform.transform.rotation
+        };
+        break;
+      }
+    }
+  } catch (err) {
+    console.error("[SSE TF] Обработка падения:", err);
+  }
+}
+
+// Преобразуем позицию из системы odom в систему map
+function transformOdomToMap(odomX: number, odomY: number, odomTheta: number) {
+  // Трансформация из map в odom
+  const { x: tx, y: ty } = mapToOdom.translation;
+  const { x: qx, y: qy, z: qz, w: qw } = mapToOdom.rotation;
+  
+  // Вычисляем угол поворота трансформации map->odom
+  const mapToOdomTheta = Math.atan2(
+    2 * (qw * qz + qx * qy), 
+    1 - 2 * (qy * qy + qz * qz)
+  );
+  
+  // Обратная трансформация: из odom в map
+  // Сначала применяем обратный поворот, затем обратное смещение
+  const cosTheta = Math.cos(-mapToOdomTheta);
+  const sinTheta = Math.sin(-mapToOdomTheta);
+  
+  // Смещение в системе map
+  const mapX = tx + cosTheta * odomX - sinTheta * odomY;
+  const mapY = ty + sinTheta * odomX + cosTheta * odomY;
+  const mapTheta = odomTheta - mapToOdomTheta;
+  
+  return { x: mapX, y: mapY, theta: mapTheta };
 }
 
 function startCameraFeed(robotName: string) {
@@ -552,6 +703,33 @@ function startOdometryFeed(robotName: string) {
   });
 
   odometryEventSource.addEventListener("PUT", handleOdometryEvent);
+}
+
+function startTfFeed(robotName: string) {
+  const key = `robots/${robotName}/tf`;
+  const url = `${ZENOH_REST_BASE}/${key}`;
+
+  // Проверка поддержки EventSource
+  if (typeof EventSource === "undefined") {
+    console.warn(
+      "EventSource не поддерживается. TF не будет обрабатываться."
+    );
+    return;
+  }
+
+  tfEventSource = new EventSource(url);
+
+  tfEventSource.addEventListener("open", () => {
+    console.log("[SSE] Подключено к TF:", key);
+  });
+
+  tfEventSource.addEventListener("error", (err) => {
+    console.error("[SSE TF] Ошибка:", err);
+    tfEventSource?.close();
+    tfEventSource = null;
+  });
+
+  tfEventSource.addEventListener("PUT", handleTfEvent);
 }
 
 function renderImage(msg: any) {
@@ -745,7 +923,7 @@ async function startExploration(robotName: string) {
         break;
       }
 
-      // Получаем текущую позицию робота из карты (в ячейках)
+      // Получаем текущую позицию робота в системе карты
       const robotCellX = Math.round((robotPosition.x - map.info.origin.position.x) / map.info.resolution);
       const robotCellY = Math.round((robotPosition.y - map.info.origin.position.y) / map.info.resolution);
 
@@ -931,7 +1109,9 @@ function renderLidar(scan: any) {
     if (mapX < 0 || mapX >= width || mapY < 0 || mapY >= height) continue;
 
     // Преобразуем в пиксели на холсте
-    // Важно: в canvas Y растет вниз, поэтому инвертируем
+    // Важно: в canvas Y растет вниз, поэтому инвертируем Y относительно карты
+    // В ROS начало карты (0,0) находится в левом нижнем углу
+    // В canvas начало (0,0) находится в левом верхнем углу
     const pixelX = offsetX + mapX * scale;
     const pixelY = offsetY + (height - mapY) * scale;
 
