@@ -148,13 +148,89 @@ const laserScanSchema = {
   },
 } as const;
 
+// Схема для nav_msgs/Odometry
+const odometrySchema = {
+  type: "dictionary",
+  items: {
+    header: {
+      index: 0,
+      value: {
+        type: "dictionary",
+        items: {
+          stamp: {
+            index: 0,
+            value: {
+              type: "dictionary",
+              items: {
+                sec: {
+                  index: 0,
+                  value: { type: "uint", len: 32, format: "number" },
+                },
+                nanosec: {
+                  index: 1,
+                  value: { type: "uint", len: 32, format: "number" },
+                },
+              },
+            },
+          },
+          frame_id: { index: 1, value: { type: "string" } },
+        },
+      },
+    },
+    child_frame_id: { index: 1, value: { type: "string" } },
+    pose: {
+      index: 2,
+      value: {
+        type: "dictionary",
+        items: {
+          pose: {
+            index: 0,
+            value: {
+              type: "dictionary",
+              items: {
+                position: {
+                  index: 0,
+                  value: {
+                    type: "dictionary",
+                    items: {
+                      x: { index: 0, value: { type: "float", len: 64, format: "number" } },
+                      y: { index: 1, value: { type: "float", len: 64, format: "number" } },
+                      z: { index: 2, value: { type: "float", len: 64, format: "number" } },
+                    },
+                  },
+                },
+                orientation: {
+                  index: 1,
+                  value: {
+                    type: "dictionary",
+                    items: {
+                      x: { index: 0, value: { type: "float", len: 64, format: "number" } },
+                      y: { index: 1, value: { type: "float", len: 64, format: "number" } },
+                      z: { index: 2, value: { type: "float", len: 64, format: "number" } },
+                      w: { index: 3, value: { type: "float", len: 64, format: "number" } },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  },
+} as const;
+
 // SSE источники
 let cameraEventSource: EventSource | null = null;
 let mapEventSource: EventSource | null = null;
 let lidarEventSource: EventSource | null = null;
+let odometryEventSource: EventSource | null = null;
 
 // Текущая карта для отрисовки лидара
 let currentMap: OccupancyGrid | null = null;
+
+// Текущая позиция робота
+let robotPosition = { x: 0, y: 0, theta: 0 };
 
 async function fetchRobots() {
   try {
@@ -218,6 +294,7 @@ function setupRobotFeeds(robotName: string) {
   startCameraFeed(robotName);
   startMapFeed(robotName);
   startLidarFeed(robotName);
+  startOdometryFeed(robotName);
 }
 
 function cleanupRobotFeeds() {
@@ -236,6 +313,11 @@ function cleanupRobotFeeds() {
     lidarEventSource.removeEventListener("PUT", handleLidarEvent);
     lidarEventSource.close();
     lidarEventSource = null;
+  }
+  if (odometryEventSource) {
+    odometryEventSource.removeEventListener("PUT", handleOdometryEvent);
+    odometryEventSource.close();
+    odometryEventSource = null;
   }
   
   // Очищаем лидарный холст при смене робота
@@ -326,6 +408,43 @@ function handleLidarEvent(event: MessageEvent) {
   }
 }
 
+function handleOdometryEvent(event: MessageEvent) {
+  try {
+    const sample = JSON.parse(event.data) as { value: string };
+    if (!sample.value) return;
+
+    // Декодируем base64
+    const binaryString = atob(sample.value);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+
+    // Парсим CDR
+    const parsed = parseCDRBytes(bytes, odometrySchema, {
+      maxSequenceSize: 10_000,
+    });
+
+    const odom = parsed.payload;
+    
+    // Извлекаем позицию
+    robotPosition.x = odom.pose.pose.position.x;
+    robotPosition.y = odom.pose.pose.position.y;
+    
+    // Извлекаем ориентацию (преобразуем кватернион в угол)
+    const q = odom.pose.pose.orientation;
+    // Для 2D мы можем использовать упрощенное преобразование
+    robotPosition.theta = Math.atan2(2 * (q.w * q.z + q.x * q.y), 1 - 2 * (q.y * q.y + q.z * q.z));
+    
+    // Перерисовываем лидар, так как позиция робота изменилась
+    if (currentMap) {
+      renderLidar(null); // null означает, что мы перерисовываем без новых данных лидара
+    }
+  } catch (err) {
+    console.error("[SSE Odometry] Обработка падения:", err);
+  }
+}
+
 function startCameraFeed(robotName: string) {
   const key = `robots/${robotName}/robot_cam`;
   const url = `${ZENOH_REST_BASE}/${key}`;
@@ -406,6 +525,33 @@ function startLidarFeed(robotName: string) {
   });
 
   lidarEventSource.addEventListener("PUT", handleLidarEvent);
+}
+
+function startOdometryFeed(robotName: string) {
+  const key = `robots/${robotName}/diff_drive_base_controller/odom`;
+  const url = `${ZENOH_REST_BASE}/${key}`;
+
+  // Проверка поддержки EventSource
+  if (typeof EventSource === "undefined") {
+    console.warn(
+      "EventSource не поддерживается. Позиция робота не будет отображаться."
+    );
+    return;
+  }
+
+  odometryEventSource = new EventSource(url);
+
+  odometryEventSource.addEventListener("open", () => {
+    console.log("[SSE] Подключено к одометрии:", key);
+  });
+
+  odometryEventSource.addEventListener("error", (err) => {
+    console.error("[SSE Odometry] Ошибка:", err);
+    odometryEventSource?.close();
+    odometryEventSource = null;
+  });
+
+  odometryEventSource.addEventListener("PUT", handleOdometryEvent);
 }
 
 function renderImage(msg: any) {
@@ -599,8 +745,11 @@ async function startExploration(robotName: string) {
         break;
       }
 
-      // TODO: Получить реальную позицию робота
-      const goalCell = chooseClosestFrontier(unvisited, 100, 100);
+      // Получаем текущую позицию робота из карты (в ячейках)
+      const robotCellX = Math.round((robotPosition.x - map.info.origin.position.x) / map.info.resolution);
+      const robotCellY = Math.round((robotPosition.y - map.info.origin.position.y) / map.info.resolution);
+
+      const goalCell = chooseClosestFrontier(unvisited, robotCellX, robotCellY);
       if (!goalCell) break;
 
       visitedFrontiers.add(`${goalCell.x},${goalCell.y}`);
@@ -724,7 +873,25 @@ function renderLidar(scan: any) {
   lidarCtx.clearRect(0, 0, lidarCanvas.width, lidarCanvas.height);
   
   const { width, height, resolution, origin } = currentMap.info;
-  const { ranges, angle_min, angle_max, angle_increment } = scan;
+  let ranges = [];
+  let angle_min, angle_max, angle_increment;
+  
+  // Если scan null, то мы перерисовываем без новых данных лидара (только позиция робота изменилась)
+  if (scan) {
+    ({ ranges, angle_min, angle_max, angle_increment } = scan);
+  } else {
+    // Используем данные из последнего скана или заглушки
+    if (lastLidarScan) {
+      ({ ranges, angle_min, angle_max, angle_increment } = lastLidarScan);
+    } else {
+      return; // Нечего рисовать
+    }
+  }
+  
+  // Сохраняем для последующих перерисовок при изменении позиции робота
+  if (scan) {
+    lastLidarScan = scan;
+  }
 
   // Масштаб и смещение из renderMap
   const scale = Math.min(mapCanvas.width / width, mapCanvas.height / height);
@@ -743,31 +910,59 @@ function renderLidar(scan: any) {
   for (let i = 0; i < angleCount; i++) {
     const range = ranges[i];
     if (range === undefined || range === null || range === Infinity || 
-        range < scan.range_min || range > scan.range_max) continue;
+        range < (scan?.range_min || 0) || range > (scan?.range_max || Infinity)) continue;
 
     // Поворот на 90 градусов против часовой стрелки (как в Python-примере)
-    // angles = list(map(lambda x: x*1j+cmath.pi/2j, np.arange(scan.angle_min, scan.angle_max, scan.angle_increment)))
     const angle = angle_min + i * angle_increment + Math.PI/2;
     
     // Преобразуем в координаты относительно робота
     const x = range * Math.cos(angle);
     const y = range * Math.sin(angle);
 
-    // Преобразуем в координаты карты
-    // В ROS карта имеет начало в левом нижнем углу
-    // В нашем случае, origin - это позиция начала карты в мире
-    const mapX = (x + origin.position.x) / resolution;
-    const mapY = (y + origin.position.y) / resolution;
+    // Мировые координаты точки лидара
+    const worldX = robotPosition.x + x;
+    const worldY = robotPosition.y + y;
+
+    // Правильное преобразование в координаты карты
+    const mapX = (worldX - origin.position.x) / resolution;
+    const mapY = (worldY - origin.position.y) / resolution;
 
     // Проверяем, что точка находится в пределах карты
     if (mapX < 0 || mapX >= width || mapY < 0 || mapY >= height) continue;
 
     // Преобразуем в пиксели на холсте
-    // В canvas Y растет вниз, поэтому инвертируем
+    // Важно: в canvas Y растет вниз, поэтому инвертируем
     const pixelX = offsetX + mapX * scale;
     const pixelY = offsetY + (height - mapY) * scale;
 
     // Рисуем точку
     lidarCtx.fillRect(pixelX, pixelY, 2, 2);
   }
+  
+  // Отрисовка позиции робота
+  const robotMapX = (robotPosition.x - origin.position.x) / resolution;
+  const robotMapY = (robotPosition.y - origin.position.y) / resolution;
+  
+  const robotPixelX = offsetX + robotMapX * scale;
+  const robotPixelY = offsetY + (height - robotMapY) * scale;
+  
+  // Отрисовка робота как круга
+  lidarCtx.beginPath();
+  lidarCtx.arc(robotPixelX, robotPixelY, 5, 0, Math.PI * 2);
+  lidarCtx.fillStyle = "rgba(255, 0, 0, 0.7)";
+  lidarCtx.fill();
+  
+  // Отрисовка направления робота
+  const directionX = robotPixelX + 8 * Math.cos(robotPosition.theta);
+  const directionY = robotPixelY - 8 * Math.sin(robotPosition.theta); // Инвертируем Y для canvas
+  
+  lidarCtx.beginPath();
+  lidarCtx.moveTo(robotPixelX, robotPixelY);
+  lidarCtx.lineTo(directionX, directionY);
+  lidarCtx.strokeStyle = "rgba(0, 0, 255, 0.7)";
+  lidarCtx.lineWidth = 2;
+  lidarCtx.stroke();
 }
+
+// Сохраняем последний лидарный скан для перерисовки при изменении позиции робота
+let lastLidarScan: any = null;
