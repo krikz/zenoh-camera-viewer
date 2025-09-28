@@ -1,7 +1,12 @@
 import { parseCDRBytes } from "@mono424/cdr-ts";
 import { OccupancyGrid, occupancyGridSchema } from "./map";
 import { MessageWriter } from "@lichtblick/omgidl-serialization";
-import { navigateToPoseDefinition, NavigateToPoseGoal, Twist, twistDefinition } from "./idl";
+import {
+  navigateToPoseDefinition,
+  NavigateToPoseGoal,
+  Twist,
+  twistDefinition,
+} from "./idl";
 
 // Создаём writer один раз (можно кэшировать)
 const goalWriter = new MessageWriter(
@@ -1195,6 +1200,187 @@ exploreBtn.onclick = () => {
   }
 };
 
+// Глобальные переменные для управления камерой
+let isDragging = false;
+let isResizing = false;
+let dragStartX = 0;
+let dragStartY = 0;
+let cameraStartX = 0;
+let cameraStartY = 0;
+let cameraStartWidth = 0;
+let cameraStartHeight = 0;
+let lastCameraPosition = { x: 20, y: 20, width: 240 };
+
+// Инициализация управления камерой
+function initCameraControl() {
+  const cameraOverlay = document.querySelector(
+    ".camera-overlay"
+  ) as HTMLElement;
+  const resizeHandle = cameraOverlay.querySelector(
+    ".resize-handle"
+  ) as HTMLElement;
+
+  if (!cameraOverlay || !resizeHandle) {
+    console.error("Элементы управления камерой не найдены");
+    return;
+  }
+
+  // Загрузка сохраненного положения камеры из localStorage
+  loadCameraPosition();
+
+  // Обработчики событий для перемещения
+  cameraOverlay.addEventListener("mousedown", startDrag);
+  cameraOverlay.addEventListener("touchstart", (e) => {
+    e.preventDefault();
+    startDrag({
+      clientX: e.touches[0].clientX,
+      clientY: e.touches[0].clientY,
+      button: 0,
+    } as MouseEvent);
+  });
+
+  // Обработчики событий для изменения размера
+  resizeHandle.addEventListener("mousedown", startResize);
+  resizeHandle.addEventListener("touchstart", (e) => {
+    e.preventDefault();
+    startResize({
+      clientX: e.touches[0].clientX,
+      clientY: e.touches[0].clientY,
+    } as MouseEvent);
+  });
+
+  // Общие обработчики для mousemove и mouseup
+  document.addEventListener("mousemove", drag);
+  document.addEventListener(
+    "touchmove",
+    (e) => {
+      e.preventDefault();
+      drag({
+        clientX: e.touches[0].clientX,
+        clientY: e.touches[0].clientY,
+      } as MouseEvent);
+    },
+    { passive: false }
+  );
+
+  document.addEventListener("mouseup", endDrag);
+  document.addEventListener("touchend", endDrag);
+
+  // Функция для начала перетаскивания
+  function startDrag(e: MouseEvent) {
+    if (e.button !== 0) return; // Только левая кнопка мыши
+    isDragging = true;
+    dragStartX = e.clientX;
+    dragStartY = e.clientY;
+    cameraStartX = cameraOverlay.offsetLeft;
+    cameraStartY = cameraOverlay.offsetTop;
+  }
+
+  // Функция для начала изменения размера
+  function startResize(e: MouseEvent) {
+    e.stopPropagation(); // Предотвращаем начало перетаскивания
+    isResizing = true;
+    dragStartX = e.clientX;
+    dragStartY = e.clientY;
+    cameraStartWidth = cameraOverlay.offsetWidth;
+    cameraStartHeight = cameraOverlay.offsetHeight;
+  }
+
+  // Основная функция перемещения
+  function drag(e: MouseEvent) {
+    if (!isDragging && !isResizing) return;
+
+    const mainArea = document.querySelector(".main-area") as HTMLElement;
+    if (!mainArea) return;
+
+    const rect = mainArea.getBoundingClientRect();
+
+    if (isDragging) {
+      // Вычисляем новую позицию
+      let newX = cameraStartX + (e.clientX - dragStartX);
+      let newY = cameraStartY + (e.clientY - dragStartY);
+
+      // Ограничиваем перемещение внутри main-area
+      newX = Math.max(
+        0,
+        Math.min(newX, rect.width - cameraOverlay.offsetWidth)
+      );
+      newY = Math.max(
+        0,
+        Math.min(newY, rect.height - cameraOverlay.offsetHeight)
+      );
+
+      // Применяем новую позицию
+      cameraOverlay.style.left = `${newX}px`;
+      cameraOverlay.style.top = `${newY}px`;
+
+      // Сохраняем позицию
+      lastCameraPosition.x = newX;
+      lastCameraPosition.y = newY;
+      saveCameraPosition();
+    }
+
+    if (isResizing) {
+      // Вычисляем новый размер
+      let newWidth = cameraStartWidth + (e.clientX - dragStartX);
+      let newHeight = cameraStartHeight + (e.clientY - dragStartY);
+
+      // Ограничиваем минимальный размер
+      newWidth = Math.max(100, newWidth);
+      newHeight = Math.max(75, newHeight);
+
+      // Применяем новый размер
+      cameraOverlay.style.width = `${newWidth}px`;
+      // Сохраняем соотношение сторон 4:3
+      cameraOverlay.style.height = `${newWidth * 0.75}px`;
+
+      // Сохраняем размер
+      lastCameraPosition.width = newWidth;
+      saveCameraPosition();
+    }
+  }
+
+  // Завершение перетаскивания/изменения размера
+  function endDrag() {
+    isDragging = false;
+    isResizing = false;
+  }
+
+  // Сохранение позиции камеры в localStorage
+  function saveCameraPosition() {
+    try {
+      localStorage.setItem(
+        "cameraPosition",
+        JSON.stringify(lastCameraPosition)
+      );
+    } catch (e) {
+      console.warn("Не удалось сохранить позицию камеры:", e);
+    }
+  }
+
+  // Загрузка позиции камеры из localStorage
+  function loadCameraPosition() {
+    try {
+      const saved = localStorage.getItem("cameraPosition");
+      if (saved) {
+        const pos = JSON.parse(saved);
+        lastCameraPosition = pos;
+
+        // Применяем сохраненные значения
+        cameraOverlay.style.left = `${pos.x}px`;
+        cameraOverlay.style.top = `${pos.y}px`;
+        cameraOverlay.style.width = `${pos.width}px`;
+        cameraOverlay.style.height = `${pos.width * 0.75}px`;
+      }
+    } catch (e) {
+      console.warn("Не удалось загрузить позицию камеры:", e);
+    }
+  }
+}
+
+// Вызовите эту функцию после инициализации остальных компонентов
+initCameraControl();
+
 function resizeCanvases() {
   // Карта — занимает всё свободное место
   const rect = mapCanvas.parentElement!.getBoundingClientRect();
@@ -1203,10 +1389,16 @@ function resizeCanvases() {
   lidarCanvas.width = rect.width;
   lidarCanvas.height = rect.height;
 
-  // Камера — фиксированная ширина, высота по пропорции
-  const camWidth = 240;
-  cameraCanvas.width = camWidth;
-  cameraCanvas.height = camWidth * 0.75; // 4:3
+  // Сохраняем размеры камеры из последней позиции
+  const cameraOverlay = document.querySelector(
+    ".camera-overlay"
+  ) as HTMLElement;
+  if (cameraOverlay && lastCameraPosition) {
+    // Обновляем размеры canvas камеры в соответствии с размером обертки
+    const camWidth = lastCameraPosition.width;
+    cameraCanvas.width = camWidth;
+    cameraCanvas.height = camWidth * 0.75; // Сохраняем соотношение 4:3
+  }
 }
 
 window.addEventListener("load", resizeCanvases);
@@ -1494,8 +1686,8 @@ async function pubTwist(linear: number, angular: number) {
   try {
     // Формируем сообщение Twist
     const twist: Twist = {
-      linear: { x: linear, y: 0, z: 0 },  // Для дифференциального робота используем только x
-      angular: { x: 0, y: 0, z: angular }  // Для дифференциального робота используем только z
+      linear: { x: linear, y: 0, z: 0 }, // Для дифференциального робота используем только x
+      angular: { x: 0, y: 0, z: angular }, // Для дифференциального робота используем только z
     };
 
     // Сериализуем в CDR
@@ -1506,7 +1698,7 @@ async function pubTwist(linear: number, angular: number) {
     const url = `${ZENOH_REST_BASE}/${key}`;
 
     const response = await fetch(url, {
-      method: "PUT",  // Важно: используем PUT для публикации в топик
+      method: "PUT", // Важно: используем PUT для публикации в топик
       headers: {
         "Content-Type": "application/octet-stream",
       },
@@ -1517,7 +1709,11 @@ async function pubTwist(linear: number, angular: number) {
       throw new Error(`HTTP ${response.status}: ${await response.text()}`);
     }
 
-    console.log(`✅ Команда скорости отправлена: linear=${linear.toFixed(2)}, angular=${angular.toFixed(2)}`);
+    console.log(
+      `✅ Команда скорости отправлена: linear=${linear.toFixed(
+        2
+      )}, angular=${angular.toFixed(2)}`
+    );
   } catch (err) {
     console.error("❌ Ошибка отправки команды скорости:", err);
     statusEl.textContent = `⚠️ Ошибка отправки команды: ${
@@ -1688,88 +1884,93 @@ const robotCtx = robotCanvas.getContext("2d")!;
 function updateRobotVisualization(linear: number, angular: number) {
   // Очистка холста
   robotCtx.clearRect(0, 0, robotCanvas.width, robotCanvas.height);
-  
+
   // Параметры робота
-  const robotWidth = 60;     // Ширина корпуса
-  const robotHeight = 80;    // Высота корпуса
-  const wheelWidth = 10;     // Ширина колеса
-  const wheelHeight = 20;    // Высота колеса
+  const robotWidth = 60; // Ширина корпуса
+  const robotHeight = 80; // Высота корпуса
+  const wheelWidth = 10; // Ширина колеса
+  const wheelHeight = 20; // Высота колеса
   const wheelEdgeOffset = -5; // Отступ от края корпуса до края колеса
-  
+
   // Позиция робота на холсте
   const robotX = robotCanvas.width / 2;
   const robotY = robotCanvas.height / 2;
-  
+
   // Рисуем корпус робота
   robotCtx.fillStyle = "#333";
-  robotCtx.fillRect(robotX - robotWidth/2, robotY - robotHeight/2, robotWidth, robotHeight);
-  
+  robotCtx.fillRect(
+    robotX - robotWidth / 2,
+    robotY - robotHeight / 2,
+    robotWidth,
+    robotHeight
+  );
+
   // Рисуем колеса
   robotCtx.fillStyle = "#555";
-  
-  // Позиции центров колес (согласно требованиям: 
-  // колеса расположены на 5 пикселей внутри корпуса, 
+
+  // Позиции центров колес (согласно требованиям:
+  // колеса расположены на 5 пикселей внутри корпуса,
   // центр колеса на расстоянии 15 пикселей от края корпуса)
   const wheelCenterOffset = 15; // Отступ от края корпуса до центра колеса
-  const leftWheelCenterX = robotX - robotWidth/2 + wheelEdgeOffset;
-  const rightWheelCenterX = robotX + robotWidth/2 - wheelEdgeOffset;
-  const topWheelCenterY = robotY - robotHeight/2 + wheelCenterOffset;
-  const bottomWheelCenterY = robotY + robotHeight/2 - wheelCenterOffset;
-  
+  const leftWheelCenterX = robotX - robotWidth / 2 + wheelEdgeOffset;
+  const rightWheelCenterX = robotX + robotWidth / 2 - wheelEdgeOffset;
+  const topWheelCenterY = robotY - robotHeight / 2 + wheelCenterOffset;
+  const bottomWheelCenterY = robotY + robotHeight / 2 - wheelCenterOffset;
+
   // Левое верхнее колесо
   robotCtx.fillRect(
-    leftWheelCenterX - wheelWidth/2, 
-    topWheelCenterY - wheelHeight/2, 
-    wheelWidth, 
+    leftWheelCenterX - wheelWidth / 2,
+    topWheelCenterY - wheelHeight / 2,
+    wheelWidth,
     wheelHeight
   );
   // Левое нижнее колесо
   robotCtx.fillRect(
-    leftWheelCenterX - wheelWidth/2, 
-    bottomWheelCenterY - wheelHeight/2, 
-    wheelWidth, 
+    leftWheelCenterX - wheelWidth / 2,
+    bottomWheelCenterY - wheelHeight / 2,
+    wheelWidth,
     wheelHeight
   );
   // Правое верхнее колесо
   robotCtx.fillRect(
-    rightWheelCenterX - wheelWidth/2, 
-    topWheelCenterY - wheelHeight/2, 
-    wheelWidth, 
+    rightWheelCenterX - wheelWidth / 2,
+    topWheelCenterY - wheelHeight / 2,
+    wheelWidth,
     wheelHeight
   );
   // Правое нижнее колесо
   robotCtx.fillRect(
-    rightWheelCenterX - wheelWidth/2, 
-    bottomWheelCenterY - wheelHeight/2, 
-    wheelWidth, 
+    rightWheelCenterX - wheelWidth / 2,
+    bottomWheelCenterY - wheelHeight / 2,
+    wheelWidth,
     wheelHeight
   );
-  
+
   // Вычисляем скорости колес
   const maxSpeed = 1.0;
   const leftSpeed = linear - angular * (robotWidth / 100);
   const rightSpeed = linear + angular * (robotWidth / 100);
-  
+
   // Ограничиваем скорости
   const normalizedLeftSpeed = Math.max(-1, Math.min(1, leftSpeed / maxSpeed));
   const normalizedRightSpeed = Math.max(-1, Math.min(1, rightSpeed / maxSpeed));
-  
+
   // Определяем позицию для векторов (вертикально, от центра)
   const vectorLength = 40;
   const vectorYCenter = robotY;
-  
+
   // Вектор для левой стороны (начинается от центра)
   const leftVectorX = robotX;
   const leftVectorYStart = vectorYCenter;
   const leftVectorYEnd = vectorYCenter - vectorLength * normalizedLeftSpeed;
-  
+
   robotCtx.strokeStyle = normalizedLeftSpeed >= 0 ? "#4CAF50" : "#f44336";
   robotCtx.lineWidth = 3;
   robotCtx.beginPath();
   robotCtx.moveTo(leftVectorX - 15, leftVectorYStart);
   robotCtx.lineTo(leftVectorX - 15, leftVectorYEnd);
   robotCtx.stroke();
-  
+
   // Стрелка для левого вектора
   robotCtx.fillStyle = robotCtx.strokeStyle;
   robotCtx.beginPath();
@@ -1786,19 +1987,19 @@ function updateRobotVisualization(linear: number, angular: number) {
   }
   robotCtx.closePath();
   robotCtx.fill();
-  
+
   // Вектор для правой стороны (начинается от центра)
   const rightVectorX = robotX;
   const rightVectorYStart = vectorYCenter;
   const rightVectorYEnd = vectorYCenter - vectorLength * normalizedRightSpeed;
-  
+
   robotCtx.strokeStyle = normalizedRightSpeed >= 0 ? "#4CAF50" : "#f44336";
   robotCtx.lineWidth = 3;
   robotCtx.beginPath();
   robotCtx.moveTo(rightVectorX + 15, rightVectorYStart);
   robotCtx.lineTo(rightVectorX + 15, rightVectorYEnd);
   robotCtx.stroke();
-  
+
   // Стрелка для правого вектора
   robotCtx.fillStyle = robotCtx.strokeStyle;
   robotCtx.beginPath();

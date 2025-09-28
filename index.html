@@ -79,18 +79,38 @@
     }
 
     /* Окно камеры в углу */
+    /* Стили для перемещаемой и изменяемой камеры */
     .camera-overlay {
       position: absolute;
-      top: 20px;
-      left: 20px;
       width: 240px;
+      height: auto;
+      cursor: move;
       border: 3px solid #fff;
       border-radius: 12px;
       box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
       overflow: hidden;
       background: black;
       z-index: 10;
-      /* Чтобы камера была поверх всех холстов */
+      /* Добавляем возможность изменения размера */
+      touch-action: none;
+    }
+
+    /* Ручка для изменения размера (в правом нижнем углу) */
+    .resize-handle {
+      position: absolute;
+      width: 16px;
+      height: 16px;
+      right: 0;
+      bottom: 0;
+      cursor: nwse-resize;
+      background: rgba(0, 0, 0, 0.5);
+      border-radius: 0 0 4px 0;
+      z-index: 20;
+    }
+
+    /* Скрыть ручку при наведении для лучшего UX */
+    .camera-overlay:hover .resize-handle {
+      background: rgba(0, 0, 0, 0.3);
     }
 
     #cameraCanvas {
@@ -193,6 +213,7 @@
     <canvas id="lidarCanvas"></canvas>
     <div class="camera-overlay">
       <canvas id="cameraCanvas"></canvas>
+      <div class="resize-handle"></div>
     </div>
     <div id="gamepadOverlay" class="gamepad-overlay" style="display: none;">
       <div class="stick">
