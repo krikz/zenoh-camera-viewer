@@ -1558,6 +1558,7 @@ function initGamepadControl() {
     gamepadBtn.classList.add("connected");
     gamepadBtn.textContent = "⏹ Disconnect Gamepad";
     gamepadOverlay.style.display = "block";
+    robotVisual.style.display = "block";
     statusEl.textContent = "🎮 Геймпад подключен";
   }
 
@@ -1575,6 +1576,7 @@ function initGamepadControl() {
     gamepadBtn.classList.remove("connected");
     gamepadBtn.textContent = "🎮 Connect Gamepad";
     gamepadOverlay.style.display = "none";
+    robotVisual.style.display = "none";
     statusEl.textContent = "Геймпад отключен";
   }
 
@@ -1607,7 +1609,8 @@ function initGamepadControl() {
     // Преобразуем в линейную и угловую скорость
     const linear = pitchValue * MAX_LINEAR_SPEED;
     const angular = yawValue * MAX_ANGULAR_SPEED;
-
+    // Обновляем визуализацию робота
+    updateRobotVisualization(linear, angular);
     // Отправляем команду через существующую функцию
     //pubTwist(linear, angular);
   }
@@ -1623,6 +1626,161 @@ function initGamepadControl() {
     yawIndicator.style.width = `${yawPercent}%`;
     yawIndicator.style.backgroundColor = "#f44336";
   }
+}
+
+// Элементы визуализации робота
+const robotVisual = document.getElementById("robotVisual")!;
+const robotCanvas = document.getElementById(
+  "robotVisualCanvas"
+) as HTMLCanvasElement;
+const robotCtx = robotCanvas.getContext("2d")!;
+
+// Функция для отрисовки состояния робота
+function updateRobotVisualization(linear: number, angular: number) {
+  // Очистка холста
+  robotCtx.clearRect(0, 0, robotCanvas.width, robotCanvas.height);
+
+  // Параметры робота
+  const robotWidth = 80;
+  const robotHeight = 60;
+  const wheelSize = 10;
+
+  // Позиция робота на холсте
+  const robotX = robotCanvas.width / 2;
+  const robotY = robotCanvas.height / 2;
+
+  // Рисуем корпус робота
+  robotCtx.fillStyle = "#333";
+  robotCtx.fillRect(
+    robotX - robotWidth / 2,
+    robotY - robotHeight / 2,
+    robotWidth,
+    robotHeight
+  );
+
+  // Рисуем колеса
+  robotCtx.fillStyle = "#555";
+  // Левое переднее колесо
+  robotCtx.fillRect(
+    robotX - robotWidth / 2 - wheelSize / 2,
+    robotY - robotHeight / 2 - wheelSize / 2,
+    wheelSize,
+    wheelSize
+  );
+  // Левое заднее колесо
+  robotCtx.fillRect(
+    robotX - robotWidth / 2 - wheelSize / 2,
+    robotY + robotHeight / 2 - wheelSize / 2,
+    wheelSize,
+    wheelSize
+  );
+  // Правое переднее колесо
+  robotCtx.fillRect(
+    robotX + robotWidth / 2 - wheelSize / 2,
+    robotY - robotHeight / 2 - wheelSize / 2,
+    wheelSize,
+    wheelSize
+  );
+  // Правое заднее колесо
+  robotCtx.fillRect(
+    robotX + robotWidth / 2 - wheelSize / 2,
+    robotY + robotHeight / 2 - wheelSize / 2,
+    wheelSize,
+    wheelSize
+  );
+
+  // Вычисляем скорости колес
+  // Для дифференциального робота:
+  // left_speed = linear - angular * (robotWidth / 100)
+  // right_speed = linear + angular * (robotWidth / 100)
+  const maxSpeed = 1.0;
+  const leftSpeed = linear - angular * (robotWidth / 100);
+  const rightSpeed = linear + angular * (robotWidth / 100);
+
+  // Ограничиваем скорости
+  const normalizedLeftSpeed = Math.max(-1, Math.min(1, leftSpeed / maxSpeed));
+  const normalizedRightSpeed = Math.max(-1, Math.min(1, rightSpeed / maxSpeed));
+
+  // Рисуем векторы скорости для левого колеса
+  const leftArrowLength = 40 * Math.abs(normalizedLeftSpeed);
+  const leftArrowX = robotX - robotWidth / 2 - 20;
+  const leftArrowY = robotY;
+
+  robotCtx.strokeStyle = normalizedLeftSpeed >= 0 ? "#4CAF50" : "#f44336";
+  robotCtx.lineWidth = 3;
+  robotCtx.beginPath();
+  robotCtx.moveTo(leftArrowX, leftArrowY);
+  robotCtx.lineTo(leftArrowX - leftArrowLength, leftArrowY);
+  robotCtx.stroke();
+
+  // Стрелка для левого вектора
+  robotCtx.fillStyle = robotCtx.strokeStyle;
+  robotCtx.beginPath();
+  if (normalizedLeftSpeed >= 0) {
+    robotCtx.moveTo(leftArrowX - leftArrowLength, leftArrowY);
+    robotCtx.lineTo(leftArrowX - leftArrowLength + 8, leftArrowY - 4);
+    robotCtx.lineTo(leftArrowX - leftArrowLength + 8, leftArrowY + 4);
+  } else {
+    robotCtx.moveTo(leftArrowX, leftArrowY);
+    robotCtx.lineTo(leftArrowX - 8, leftArrowY - 4);
+    robotCtx.lineTo(leftArrowX - 8, leftArrowY + 4);
+  }
+  robotCtx.closePath();
+  robotCtx.fill();
+
+  // Рисуем векторы скорости для правого колеса
+  const rightArrowLength = 40 * Math.abs(normalizedRightSpeed);
+  const rightArrowX = robotX + robotWidth / 2 + 20;
+  const rightArrowY = robotY;
+
+  robotCtx.strokeStyle = normalizedRightSpeed >= 0 ? "#4CAF50" : "#f44336";
+  robotCtx.lineWidth = 3;
+  robotCtx.beginPath();
+  robotCtx.moveTo(rightArrowX, rightArrowY);
+  robotCtx.lineTo(rightArrowX + rightArrowLength, rightArrowY);
+  robotCtx.stroke();
+
+  // Стрелка для правого вектора
+  robotCtx.fillStyle = robotCtx.strokeStyle;
+  robotCtx.beginPath();
+  if (normalizedRightSpeed >= 0) {
+    robotCtx.moveTo(rightArrowX + rightArrowLength, rightArrowY);
+    robotCtx.lineTo(rightArrowX + rightArrowLength - 8, rightArrowY - 4);
+    robotCtx.lineTo(rightArrowX + rightArrowLength - 8, rightArrowY + 4);
+  } else {
+    robotCtx.moveTo(rightArrowX, rightArrowY);
+    robotCtx.lineTo(rightArrowX + 8, rightArrowY - 4);
+    robotCtx.lineTo(rightArrowX + 8, rightArrowY + 4);
+  }
+  robotCtx.closePath();
+  robotCtx.fill();
+
+  // Отображаем численные значения
+  robotCtx.fillStyle = "#eee";
+  robotCtx.font = "12px Arial";
+  robotCtx.textAlign = "center";
+  robotCtx.fillText(
+    `L: ${leftSpeed.toFixed(2)}`,
+    robotX - robotWidth / 2,
+    robotY + robotHeight / 2 + 20
+  );
+  robotCtx.fillText(
+    `R: ${rightSpeed.toFixed(2)}`,
+    robotX + robotWidth / 2,
+    robotY + robotHeight / 2 + 20
+  );
+
+  // Подписи
+  robotCtx.fillText(
+    "Left",
+    robotX - robotWidth / 2,
+    robotY - robotHeight / 2 - 15
+  );
+  robotCtx.fillText(
+    "Right",
+    robotX + robotWidth / 2,
+    robotY - robotHeight / 2 - 15
+  );
 }
 
 // Вызовите эту функцию после инициализации остальных компонентов

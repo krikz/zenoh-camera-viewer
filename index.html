@@ -158,6 +158,23 @@
       width: 50%;
       transition: width 0.1s;
     }
+
+    .robot-visual {
+      position: absolute;
+      top: 120px;
+      /* Под gamepad-оверлеем */
+      left: 280px;
+      width: 200px;
+      background: rgba(0, 0, 0, 0.5);
+      padding: 8px;
+      border-radius: 8px;
+      z-index: 10;
+    }
+
+    .robot-visual canvas {
+      display: block;
+      margin: 0 auto;
+    }
   </style>
 </head>
 
@@ -190,6 +207,9 @@
           <div id="yawIndicator" class="stick-indicator" style="width: 50%;"></div>
         </div>
       </div>
+    </div>
+    <div id="robotVisual" class="robot-visual" style="display: none;">
+      <canvas id="robotVisualCanvas" width="200" height="100"></canvas>
     </div>
     <p class="status" id="status">Выберите робота</p>
   </div>
