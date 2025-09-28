@@ -1400,3 +1400,151 @@ let lastLidarScan: any = null;
 
 // Сохраняем текущую цель для отрисовки
 let currentGoal: { x: number, y: number } | null = null;
+
+// Глобальные переменные для геймпада
+let gamepadConnected = false;
+let gamepadInterval: number | null = null;
+const MAX_LINEAR_SPEED = 0.5;  // Максимальная линейная скорость
+const MAX_ANGULAR_SPEED = 1.0; // Максимальная угловая скорость
+const DEADZONE = 0.1;          // Мертвая зона стиков
+
+// Получаем элемент кнопки геймпада
+// Элементы интерфейса
+const gamepadBtn = document.getElementById("gamepadBtn") as HTMLButtonElement;
+const gamepadOverlay = document.getElementById("gamepadOverlay")!;
+const pitchIndicator = document.getElementById("pitchIndicator")!;
+const yawIndicator = document.getElementById("yawIndicator")!;
+
+// В функции connectGamepad замените:
+gamepadOverlay.style.display = "block";
+
+// В функции disconnectGamepad замените:
+gamepadOverlay.style.display = "none";
+
+// Проверка поддержки Gamepad API
+function isGamepadSupported(): boolean {
+  return !!navigator.getGamepads;
+}
+
+// Инициализация геймпада
+function initGamepadControl() {
+  if (!isGamepadSupported()) {
+    gamepadBtn.disabled = true;
+    gamepadBtn.title = "Браузер не поддерживает Gamepad API";
+    gamepadBtn.textContent = "🎮 Gamepad недоступен";
+    return;
+  }
+  
+  // Обработчик нажатия на кнопку подключения
+  gamepadBtn.addEventListener("click", toggleGamepadConnection);
+  
+  // Автоматическое подключение при подключении геймпада
+  window.addEventListener("gamepadconnected", (e: GamepadEvent) => {
+    console.log("Геймпад подключен:", e.gamepad);
+    if (!gamepadConnected) {
+      connectGamepad();
+    }
+  });
+  
+  // Автоматическое отключение при отсоединении геймпада
+  window.addEventListener("gamepaddisconnected", () => {
+    if (gamepadConnected) {
+      disconnectGamepad();
+    }
+  });
+}
+
+// Переключение состояния подключения геймпада
+function toggleGamepadConnection() {
+  if (gamepadConnected) {
+    disconnectGamepad();
+  } else {
+    connectGamepad();
+  }
+}
+
+// Подключение геймпада
+function connectGamepad() {
+  const gamepads = navigator.getGamepads();
+  let foundGamepad = null;
+  
+  // Поиск подключенного геймпада
+  for (let i = 0; i < gamepads.length; i++) {
+    if (gamepads[i]) {
+      foundGamepad = gamepads[i];
+      break;
+    }
+  }
+  
+  if (!foundGamepad) {
+    statusEl.textContent = "⚠️ Нажмите любую кнопку на геймпаде для активации";
+    return;
+  }
+  
+  // Настройка интервала опроса
+  if (gamepadInterval) {
+    clearInterval(gamepadInterval);
+  }
+  
+  gamepadInterval = window.setInterval(readGamepad, 50); // 20 Гц
+  gamepadConnected = true;
+  
+  // Обновление UI
+  gamepadBtn.classList.add("connected");
+  gamepadBtn.textContent = "⏹ Disconnect Gamepad";
+  statusEl.textContent = `🎮 Геймпад подключен: ${foundGamepad.id}`;
+  
+  console.log("Геймпад активирован:", foundGamepad);
+}
+
+// Отключение геймпада
+function disconnectGamepad() {
+  if (gamepadInterval) {
+    clearInterval(gamepadInterval);
+    gamepadInterval = null;
+  }
+  
+  // Отправка команды остановки
+  pubTwist(0, 0);
+  
+  // Обновление UI
+  gamepadConnected = false;
+  gamepadBtn.classList.remove("connected");
+  gamepadBtn.textContent = "🎮 Connect Gamepad";
+  statusEl.textContent = "Геймпад отключен";
+}
+
+// Чтение данных геймпада и отправка команд
+function readGamepad() {
+  const gamepads = navigator.getGamepads();
+  if (gamepads.length === 0 || !gamepads[0]) {
+    disconnectGamepad();
+    return;
+  }
+  
+  const gamepad = gamepads[0];
+  
+  // Получаем данные со стиков (Radiomaster обычно использует axes 0-3)
+  // Проверьте в консоли, какие оси у вашего устройства
+  const leftStickX = gamepad.axes[0]; // Обычно левый стик X
+  const leftStickY = gamepad.axes[1]; // Обычно левый стик Y
+  
+  console.log("Оси геймпада:", gamepad.axes);
+  
+  // Применяем мертвую зону
+  const x = Math.abs(leftStickX) > DEADZONE ? leftStickX : 0;
+  const y = Math.abs(leftStickY) > DEADZONE ? -leftStickY : 0; // Инвертируем Y (вверх - отрицательное значение)
+  
+  // Преобразуем в линейную и угловую скорость
+  // В ROS2 для дифференциального робота:
+  // - linear.x: движение вперед/назад
+  // - angular.z: поворот
+  const linear = y * MAX_LINEAR_SPEED;
+  const angular = x * MAX_ANGULAR_SPEED;
+  
+  // Отправляем команду через существующую функцию
+  //pubTwist(linear, angular);
+}
+
+// Добавьте это в вашу функцию инициализации (после fetchRobots)
+initGamepadControl();

@@ -1,11 +1,17 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Zenoh Robot Explorer</title>
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       background: #f0f2f5;
@@ -23,10 +29,11 @@
       display: flex;
       align-items: center;
       gap: 20px;
-      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
     }
 
-    .navbar select, .navbar button {
+    .navbar select,
+    .navbar button {
       padding: 8px 12px;
       font-size: 16px;
       border: none;
@@ -61,7 +68,8 @@
       background: #ddd;
     }
 
-    #mapCanvas, #lidarCanvas {
+    #mapCanvas,
+    #lidarCanvas {
       position: absolute;
       top: 0;
       left: 0;
@@ -78,10 +86,11 @@
       width: 240px;
       border: 3px solid #fff;
       border-radius: 12px;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
       overflow: hidden;
       background: black;
-      z-index: 10; /* Чтобы камера была поверх всех холстов */
+      z-index: 10;
+      /* Чтобы камера была поверх всех холстов */
     }
 
     #cameraCanvas {
@@ -94,21 +103,72 @@
       position: absolute;
       bottom: 20px;
       left: 20px;
-      background: rgba(0,0,0,0.7);
+      background: rgba(0, 0, 0, 0.7);
       color: #fff;
       padding: 8px 12px;
       border-radius: 6px;
       font-size: 14px;
-      z-index: 10; /* Чтобы статус был виден поверх холстов */
+      z-index: 10;
+      /* Чтобы статус был виден поверх холстов */
+    }
+
+    .navbar button.gamepad-btn {
+      background: #2196F3;
+      color: white;
+    }
+
+    .navbar button.gamepad-btn.connected {
+      background: #4CAF50;
+    }
+
+    /* Стили для геймпада рядом с камерой */
+    .gamepad-overlay {
+      position: absolute;
+      top: 20px;
+      left: 280px;
+      /* 240px (ширина камеры) + 20px (отступ) + 20px (промежуток) */
+      width: 120px;
+      background: rgba(0, 0, 0, 0.5);
+      padding: 8px;
+      border-radius: 8px;
+      z-index: 10;
+    }
+
+    .stick {
+      margin-bottom: 10px;
+    }
+
+    .stick-label {
+      font-size: 12px;
+      color: #eee;
+      margin-bottom: 3px;
+    }
+
+    .stick-bar {
+      width: 100%;
+      height: 6px;
+      background: rgba(255, 255, 255, 0.3);
+      border-radius: 3px;
+      overflow: hidden;
+    }
+
+    .stick-indicator {
+      height: 100%;
+      background: #4CAF50;
+      width: 50%;
+      transition: width 0.1s;
     }
   </style>
 </head>
+
 <body>
   <nav class="navbar">
     <select id="robotSelect">
       <option value="">Загрузка...</option>
     </select>
     <button id="exploreBtn">▶️ Explore</button>
+    <!-- Новая кнопка для геймпада -->
+    <button id="gamepadBtn" class="gamepad-btn">🎮 Connect Gamepad</button>
   </nav>
 
   <div class="main-area">
@@ -117,9 +177,24 @@
     <div class="camera-overlay">
       <canvas id="cameraCanvas"></canvas>
     </div>
+    <div class="gamepad-overlay" style="display: none;">
+      <div class="stick">
+        <div class="stick-label">Вперед/Назад</div>
+        <div class="stick-bar">
+          <div id="pitchIndicator" class="stick-indicator" style="width: 50%;"></div>
+        </div>
+      </div>
+      <div class="stick">
+        <div class="stick-label">Влево/Вправо</div>
+        <div class="stick-bar">
+          <div id="yawIndicator" class="stick-indicator" style="width: 50%;"></div>
+        </div>
+      </div>
+    </div>
     <p class="status" id="status">Выберите робота</p>
   </div>
 
   <script type="module" src="./main.ts"></script>
 </body>
+
 </html>
