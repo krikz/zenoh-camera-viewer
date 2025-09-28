@@ -778,24 +778,24 @@ function transformOdomToMap(odomX: number, odomY: number, odomTheta: number) {
   // Трансформация из odom в map (mapToOdom преобразует точки из odom в map)
   const { x: tx, y: ty } = mapToOdom.translation;
   const { x: qx, y: qy, z: qz, w: qw } = mapToOdom.rotation;
-  
+
   // Вычисляем угол поворота трансформации odom -> map
   const odomToMapTheta = Math.atan2(
     2 * (qw * qz + qx * qy),
     1 - 2 * (qy * qy + qz * qz)
   );
-  
+
   // Преобразуем точку из системы odom в систему map
   const cosTheta = Math.cos(odomToMapTheta);
   const sinTheta = Math.sin(odomToMapTheta);
-  
+
   // Правильное преобразование: сначала поворот, затем смещение
   const mapX = tx + cosTheta * odomX - sinTheta * odomY;
   const mapY = ty + sinTheta * odomX + cosTheta * odomY;
-  
+
   // Угол робота в системе map (складываем углы)
   const mapTheta = odomTheta + odomToMapTheta;
-  
+
   return { x: mapX, y: mapY, theta: mapTheta };
 }
 
@@ -1515,16 +1515,20 @@ function renderLidar(scan: any) {
     )
       continue;
 
-    // Поворот на 90 градусов против часовой стрелки
-    const angle = angle_min + i * angle_increment;
+    // Угол луча лидара относительно робота
+    const beamAngle = angle_min + i * angle_increment;
 
-    // Преобразуем в координаты относительно робота
-    const x = range * Math.cos(angle);
-    const y = range * Math.sin(angle);
+    // Координаты точки лидара в ЛОКАЛЬНОЙ системе координат робота
+    const x_local = range * Math.cos(beamAngle);
+    const y_local = range * Math.sin(beamAngle);
 
-    // Мировые координаты точки лидара
-    const worldX = robotPosition.x + x;
-    const worldY = robotPosition.y + y;
+    // ПРАВИЛЬНОЕ преобразование в МИРОВУЮ систему координат
+    // Учитываем ориентацию робота
+    const cosRobot = Math.cos(robotPosition.theta);
+    const sinRobot = Math.sin(robotPosition.theta);
+
+    const worldX = robotPosition.x + x_local * cosRobot - y_local * sinRobot;
+    const worldY = robotPosition.y + x_local * sinRobot + y_local * cosRobot;
 
     // Правильное преобразование в координаты карты
     const mapX = (worldX - origin.position.x) / resolution;
@@ -1554,25 +1558,30 @@ function renderLidar(scan: any) {
 
   for (let i = 0; i < angleCount; i++) {
     const range = ranges[i];
-    if (range === undefined || range === null || range === Infinity || 
-        range < (scan?.range_min || 0) || range > (scan?.range_max || Infinity))
+    if (
+      range === undefined ||
+      range === null ||
+      range === Infinity ||
+      range < (scan?.range_min || 0) ||
+      range > (scan?.range_max || Infinity)
+    )
       continue;
-    
+
     // Угол луча лидара
     const beamAngle = angle_min + i * angle_increment;
-    
+
     // Координаты точки лидара в ЛОКАЛЬНОЙ системе координат робота
     const x_local = range * Math.cos(beamAngle);
     const y_local = range * Math.sin(beamAngle);
-    
+
     // ПРАВИЛЬНОЕ преобразование в МИРОВУЮ систему координат
     // Учитываем ориентацию робота
     const cosRobot = Math.cos(robotPosition.theta);
     const sinRobot = Math.sin(robotPosition.theta);
-    
+
     const worldX = robotPosition.x + x_local * cosRobot - y_local * sinRobot;
     const worldY = robotPosition.y + x_local * sinRobot + y_local * cosRobot;
-    
+
     // Преобразуем в координаты карты
     const mapX = (worldX - origin.position.x) / resolution;
     const mapY = (worldY - origin.position.y) / resolution;
@@ -1672,7 +1681,7 @@ function renderLidar(scan: any) {
       lidarCtx.fillStyle = "rgba(0, 255, 0, 0.7)";
       lidarCtx.fillRect(goalPixelX - 4, goalPixelY - 4, 8, 8);
     }
-  }  
+  }
 }
 
 // Добавьте эту функцию в ваш main.ts
