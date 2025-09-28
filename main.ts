@@ -451,12 +451,12 @@ async function fetchRobots() {
 
 function setupRobotFeeds(robotName: string) {
   cleanupRobotFeeds();
+  startPlanFeed(robotName);
   startCameraFeed(robotName);
   startMapFeed(robotName);
   startLidarFeed(robotName);
   startOdometryFeed(robotName);
   startTfFeed(robotName);
-  startPlanFeed(robotName);
 }
 
 function cleanupRobotFeeds() {
@@ -1234,16 +1234,16 @@ function renderLidar(scan: any) {
   const angleCount = ranges.length;
   
   // Отрисовка векторов направления для лидара (каждый 5-й луч)
-  lidarCtx.strokeStyle = "rgba(255, 165, 0, 0.3)";
-  lidarCtx.lineWidth = 0.5;
+  lidarCtx.strokeStyle = "rgba(255, 165, 0, 0.9)";
+  lidarCtx.lineWidth = 1;
   
-  for (let i = 0; i < angleCount; i += 5) {
+  for (let i = 0; i < angleCount; i += 1) {
     const range = ranges[i];
     if (range === undefined || range === null || range === Infinity || 
         range < (scan?.range_min || 0) || range > (scan?.range_max || Infinity)) continue;
 
     // Поворот на 90 градусов против часовой стрелки
-    const angle = angle_min + i * angle_increment + Math.PI/2;
+    const angle = angle_min + i * angle_increment;
     
     // Преобразуем в координаты относительно робота
     const x = range * Math.cos(angle);
@@ -1262,13 +1262,13 @@ function renderLidar(scan: any) {
 
     // Преобразуем в пиксели на холсте
     const pixelX = offsetX + mapX * scale;
-    const pixelY = offsetY + (height - mapY) * scale;
+    const pixelY = offsetY + ( mapY) * scale;
     
     // Рисуем вектор от робота к точке
     const robotMapX = (robotPosition.x - origin.position.x) / resolution;
     const robotMapY = (robotPosition.y - origin.position.y) / resolution;
     const robotPixelX = offsetX + robotMapX * scale;
-    const robotPixelY = offsetY + (height - robotMapY) * scale;
+    const robotPixelY = offsetY + ( robotMapY) * scale;
 
     lidarCtx.beginPath();
     lidarCtx.moveTo(robotPixelX, robotPixelY);
@@ -1285,7 +1285,7 @@ function renderLidar(scan: any) {
         range < (scan?.range_min || 0) || range > (scan?.range_max || Infinity)) continue;
 
     // Поворот на 90 градусов против часовой стрелки (как в Python-примере)
-    const angle = angle_min + i * angle_increment + Math.PI/2;
+    const angle = angle_min + i * angle_increment;
     
     // Преобразуем в координаты относительно робота
     const x = range * Math.cos(angle);
@@ -1307,7 +1307,7 @@ function renderLidar(scan: any) {
     // В ROS начало карты (0,0) находится в левом нижнем углу
     // В canvas начало (0,0) находится в левом верхнем углу
     const pixelX = offsetX + mapX * scale;
-    const pixelY = offsetY + (height - mapY) * scale;
+    const pixelY = offsetY + ( mapY) * scale;
 
     // Рисуем точку
     lidarCtx.fillRect(pixelX, pixelY, 2, 2);
@@ -1318,7 +1318,7 @@ function renderLidar(scan: any) {
   const robotMapY = (robotPosition.y - origin.position.y) / resolution;
   
   const robotPixelX = offsetX + robotMapX * scale;
-  const robotPixelY = offsetY + (height - robotMapY) * scale;
+  const robotPixelY = offsetY + ( robotMapY) * scale;
   
   // Отрисовка робота как круга
   lidarCtx.beginPath();
@@ -1327,14 +1327,14 @@ function renderLidar(scan: any) {
   lidarCtx.fill();
   
   // Отрисовка направления робота
-  const directionX = robotPixelX + 10 * Math.cos(robotPosition.theta);
-  const directionY = robotPixelY - 10 * Math.sin(robotPosition.theta); // Инвертируем Y для canvas
+  const directionX = robotPixelX + 30 * Math.cos(robotPosition.theta + Math.PI);
+  const directionY = robotPixelY + 30 * Math.sin(robotPosition.theta + Math.PI);
   
   lidarCtx.beginPath();
   lidarCtx.moveTo(robotPixelX, robotPixelY);
   lidarCtx.lineTo(directionX, directionY);
   lidarCtx.strokeStyle = "rgba(0, 0, 255, 0.7)";
-  lidarCtx.lineWidth = 2;
+  lidarCtx.lineWidth = 4;
   lidarCtx.stroke();
   
   // Отрисовка текущей цели (если есть)
@@ -1343,7 +1343,7 @@ function renderLidar(scan: any) {
     const goalMapY = (currentGoal.y - origin.position.y) / resolution;
     
     const goalPixelX = offsetX + goalMapX * scale;
-    const goalPixelY = offsetY + (height - goalMapY) * scale;
+    const goalPixelY = offsetY + ( goalMapY) * scale;
     
     // Отрисовка цели как квадрата
     lidarCtx.fillStyle = "rgba(255, 0, 0, 0.5)";
@@ -1363,12 +1363,12 @@ function renderLidar(scan: any) {
     lidarCtx.beginPath();
     lidarCtx.moveTo(
       offsetX + ((currentPlan[0].x - origin.position.x) / resolution) * scale,
-      offsetY + (height - (currentPlan[0].y - origin.position.y) / resolution) * scale
+      offsetY + ( (currentPlan[0].y - origin.position.y) / resolution) * scale
     );
     
     for (let i = 1; i < currentPlan.length; i++) {
       const px = offsetX + ((currentPlan[i].x - origin.position.x) / resolution) * scale;
-      const py = offsetY + (height - (currentPlan[i].y - origin.position.y) / resolution) * scale;
+      const py = offsetY + ( (currentPlan[i].y - origin.position.y) / resolution) * scale;
       
       lidarCtx.lineTo(px, py);
     }
@@ -1386,7 +1386,7 @@ function renderLidar(scan: any) {
       const goalMapY = (currentGoalY - origin.position.y) / resolution;
       
       const goalPixelX = offsetX + goalMapX * scale;
-      const goalPixelY = offsetY + (height - goalMapY) * scale;
+      const goalPixelY = offsetY + ( goalMapY) * scale;
       
       // Отрисовка текущей цели как квадрата
       lidarCtx.fillStyle = "rgba(0, 255, 0, 0.7)";
