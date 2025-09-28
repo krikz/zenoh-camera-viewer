@@ -1608,7 +1608,7 @@ function initGamepadControl() {
 
     // Преобразуем в линейную и угловую скорость
     const linear = pitchValue * MAX_LINEAR_SPEED;
-    const angular = yawValue * MAX_ANGULAR_SPEED;
+    const angular = -yawValue * MAX_ANGULAR_SPEED;
     // Обновляем визуализацию робота
     updateRobotVisualization(linear, angular);
     // Отправляем команду через существующую функцию
@@ -1639,149 +1639,145 @@ const robotCtx = robotCanvas.getContext("2d")!;
 function updateRobotVisualization(linear: number, angular: number) {
   // Очистка холста
   robotCtx.clearRect(0, 0, robotCanvas.width, robotCanvas.height);
-
+  
   // Параметры робота
-  const robotWidth = 80;
-  const robotHeight = 60;
-  const wheelSize = 10;
-
+  const robotWidth = 60;     // Ширина корпуса
+  const robotHeight = 80;    // Высота корпуса
+  const wheelWidth = 10;     // Ширина колеса
+  const wheelHeight = 20;    // Высота колеса
+  const wheelEdgeOffset = -5; // Отступ от края корпуса до края колеса
+  
   // Позиция робота на холсте
   const robotX = robotCanvas.width / 2;
   const robotY = robotCanvas.height / 2;
-
+  
   // Рисуем корпус робота
   robotCtx.fillStyle = "#333";
-  robotCtx.fillRect(
-    robotX - robotWidth / 2,
-    robotY - robotHeight / 2,
-    robotWidth,
-    robotHeight
-  );
-
+  robotCtx.fillRect(robotX - robotWidth/2, robotY - robotHeight/2, robotWidth, robotHeight);
+  
   // Рисуем колеса
   robotCtx.fillStyle = "#555";
-  // Левое переднее колесо
+  
+  // Позиции центров колес (согласно требованиям: 
+  // колеса расположены на 5 пикселей внутри корпуса, 
+  // центр колеса на расстоянии 15 пикселей от края корпуса)
+  const wheelCenterOffset = 15; // Отступ от края корпуса до центра колеса
+  const leftWheelCenterX = robotX - robotWidth/2 + wheelEdgeOffset;
+  const rightWheelCenterX = robotX + robotWidth/2 - wheelEdgeOffset;
+  const topWheelCenterY = robotY - robotHeight/2 + wheelCenterOffset;
+  const bottomWheelCenterY = robotY + robotHeight/2 - wheelCenterOffset;
+  
+  // Левое верхнее колесо
   robotCtx.fillRect(
-    robotX - robotWidth / 2 - wheelSize / 2,
-    robotY - robotHeight / 2 - wheelSize / 2,
-    wheelSize,
-    wheelSize
+    leftWheelCenterX - wheelWidth/2, 
+    topWheelCenterY - wheelHeight/2, 
+    wheelWidth, 
+    wheelHeight
   );
-  // Левое заднее колесо
+  // Левое нижнее колесо
   robotCtx.fillRect(
-    robotX - robotWidth / 2 - wheelSize / 2,
-    robotY + robotHeight / 2 - wheelSize / 2,
-    wheelSize,
-    wheelSize
+    leftWheelCenterX - wheelWidth/2, 
+    bottomWheelCenterY - wheelHeight/2, 
+    wheelWidth, 
+    wheelHeight
   );
-  // Правое переднее колесо
+  // Правое верхнее колесо
   robotCtx.fillRect(
-    robotX + robotWidth / 2 - wheelSize / 2,
-    robotY - robotHeight / 2 - wheelSize / 2,
-    wheelSize,
-    wheelSize
+    rightWheelCenterX - wheelWidth/2, 
+    topWheelCenterY - wheelHeight/2, 
+    wheelWidth, 
+    wheelHeight
   );
-  // Правое заднее колесо
+  // Правое нижнее колесо
   robotCtx.fillRect(
-    robotX + robotWidth / 2 - wheelSize / 2,
-    robotY + robotHeight / 2 - wheelSize / 2,
-    wheelSize,
-    wheelSize
+    rightWheelCenterX - wheelWidth/2, 
+    bottomWheelCenterY - wheelHeight/2, 
+    wheelWidth, 
+    wheelHeight
   );
-
+  
   // Вычисляем скорости колес
-  // Для дифференциального робота:
-  // left_speed = linear - angular * (robotWidth / 100)
-  // right_speed = linear + angular * (robotWidth / 100)
   const maxSpeed = 1.0;
   const leftSpeed = linear - angular * (robotWidth / 100);
   const rightSpeed = linear + angular * (robotWidth / 100);
-
+  
   // Ограничиваем скорости
   const normalizedLeftSpeed = Math.max(-1, Math.min(1, leftSpeed / maxSpeed));
   const normalizedRightSpeed = Math.max(-1, Math.min(1, rightSpeed / maxSpeed));
-
-  // Рисуем векторы скорости для левого колеса
-  const leftArrowLength = 40 * Math.abs(normalizedLeftSpeed);
-  const leftArrowX = robotX - robotWidth / 2 - 20;
-  const leftArrowY = robotY;
-
+  
+  // Определяем позицию для векторов (вертикально, от центра)
+  const vectorLength = 40;
+  const vectorYCenter = robotY;
+  
+  // Вектор для левой стороны (начинается от центра)
+  const leftVectorX = robotX;
+  const leftVectorYStart = vectorYCenter;
+  const leftVectorYEnd = vectorYCenter - vectorLength * normalizedLeftSpeed;
+  
   robotCtx.strokeStyle = normalizedLeftSpeed >= 0 ? "#4CAF50" : "#f44336";
   robotCtx.lineWidth = 3;
   robotCtx.beginPath();
-  robotCtx.moveTo(leftArrowX, leftArrowY);
-  robotCtx.lineTo(leftArrowX - leftArrowLength, leftArrowY);
+  robotCtx.moveTo(leftVectorX - 15, leftVectorYStart);
+  robotCtx.lineTo(leftVectorX - 15, leftVectorYEnd);
   robotCtx.stroke();
-
+  
   // Стрелка для левого вектора
   robotCtx.fillStyle = robotCtx.strokeStyle;
   robotCtx.beginPath();
   if (normalizedLeftSpeed >= 0) {
-    robotCtx.moveTo(leftArrowX - leftArrowLength, leftArrowY);
-    robotCtx.lineTo(leftArrowX - leftArrowLength + 8, leftArrowY - 4);
-    robotCtx.lineTo(leftArrowX - leftArrowLength + 8, leftArrowY + 4);
+    // Движение вверх (зеленый)
+    robotCtx.moveTo(leftVectorX - 15, leftVectorYEnd);
+    robotCtx.lineTo(leftVectorX - 15 - 4, leftVectorYEnd + 8);
+    robotCtx.lineTo(leftVectorX - 15 + 4, leftVectorYEnd + 8);
   } else {
-    robotCtx.moveTo(leftArrowX, leftArrowY);
-    robotCtx.lineTo(leftArrowX - 8, leftArrowY - 4);
-    robotCtx.lineTo(leftArrowX - 8, leftArrowY + 4);
+    // Движение вниз (красный)
+    robotCtx.moveTo(leftVectorX - 15, leftVectorYEnd);
+    robotCtx.lineTo(leftVectorX - 15 - 4, leftVectorYEnd - 8);
+    robotCtx.lineTo(leftVectorX - 15 + 4, leftVectorYEnd - 8);
   }
   robotCtx.closePath();
   robotCtx.fill();
-
-  // Рисуем векторы скорости для правого колеса
-  const rightArrowLength = 40 * Math.abs(normalizedRightSpeed);
-  const rightArrowX = robotX + robotWidth / 2 + 20;
-  const rightArrowY = robotY;
-
+  
+  // Вектор для правой стороны (начинается от центра)
+  const rightVectorX = robotX;
+  const rightVectorYStart = vectorYCenter;
+  const rightVectorYEnd = vectorYCenter - vectorLength * normalizedRightSpeed;
+  
   robotCtx.strokeStyle = normalizedRightSpeed >= 0 ? "#4CAF50" : "#f44336";
   robotCtx.lineWidth = 3;
   robotCtx.beginPath();
-  robotCtx.moveTo(rightArrowX, rightArrowY);
-  robotCtx.lineTo(rightArrowX + rightArrowLength, rightArrowY);
+  robotCtx.moveTo(rightVectorX + 15, rightVectorYStart);
+  robotCtx.lineTo(rightVectorX + 15, rightVectorYEnd);
   robotCtx.stroke();
-
+  
   // Стрелка для правого вектора
   robotCtx.fillStyle = robotCtx.strokeStyle;
   robotCtx.beginPath();
   if (normalizedRightSpeed >= 0) {
-    robotCtx.moveTo(rightArrowX + rightArrowLength, rightArrowY);
-    robotCtx.lineTo(rightArrowX + rightArrowLength - 8, rightArrowY - 4);
-    robotCtx.lineTo(rightArrowX + rightArrowLength - 8, rightArrowY + 4);
+    // Движение вверх (зеленый)
+    robotCtx.moveTo(rightVectorX + 15, rightVectorYEnd);
+    robotCtx.lineTo(rightVectorX + 15 - 4, rightVectorYEnd + 8);
+    robotCtx.lineTo(rightVectorX + 15 + 4, rightVectorYEnd + 8);
   } else {
-    robotCtx.moveTo(rightArrowX, rightArrowY);
-    robotCtx.lineTo(rightArrowX + 8, rightArrowY - 4);
-    robotCtx.lineTo(rightArrowX + 8, rightArrowY + 4);
+    // Движение вниз (красный)
+    robotCtx.moveTo(rightVectorX + 15, rightVectorYEnd);
+    robotCtx.lineTo(rightVectorX + 15 - 4, rightVectorYEnd - 8);
+    robotCtx.lineTo(rightVectorX + 15 + 4, rightVectorYEnd - 8);
   }
   robotCtx.closePath();
   robotCtx.fill();
-
+  /* 
   // Отображаем численные значения
   robotCtx.fillStyle = "#eee";
   robotCtx.font = "12px Arial";
   robotCtx.textAlign = "center";
-  robotCtx.fillText(
-    `L: ${leftSpeed.toFixed(2)}`,
-    robotX - robotWidth / 2,
-    robotY + robotHeight / 2 + 20
-  );
-  robotCtx.fillText(
-    `R: ${rightSpeed.toFixed(2)}`,
-    robotX + robotWidth / 2,
-    robotY + robotHeight / 2 + 20
-  );
-
+  robotCtx.fillText(`L: ${leftSpeed.toFixed(2)}`, leftVectorX - 15, vectorYCenter + 25);
+  robotCtx.fillText(`R: ${rightSpeed.toFixed(2)}`, rightVectorX + 15, vectorYCenter + 25);
+  
   // Подписи
-  robotCtx.fillText(
-    "Left",
-    robotX - robotWidth / 2,
-    robotY - robotHeight / 2 - 15
-  );
-  robotCtx.fillText(
-    "Right",
-    robotX + robotWidth / 2,
-    robotY - robotHeight / 2 - 15
-  );
+  robotCtx.fillText("Left", leftVectorX - 15, vectorYCenter - 50);
+  robotCtx.fillText("Right", rightVectorX + 15, vectorYCenter - 50);
+  */
 }
-
 // Вызовите эту функцию после инициализации остальных компонентов
 initGamepadControl();
