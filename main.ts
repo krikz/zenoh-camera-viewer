@@ -1,12 +1,19 @@
 import { parseCDRBytes } from "@mono424/cdr-ts";
 import { OccupancyGrid, occupancyGridSchema } from "./map";
 import { MessageWriter } from "@lichtblick/omgidl-serialization";
-import { navigateToPoseDefinition, NavigateToPoseGoal } from "./idl";
+import { navigateToPoseDefinition, NavigateToPoseGoal, Twist, twistDefinition } from "./idl";
 
 // Создаём writer один раз (можно кэшировать)
 const goalWriter = new MessageWriter(
   "nav2_msgs::NavigateToPose_Goal",
   navigateToPoseDefinition,
+  { kind: 0x01 } // XCDR не требуется
+);
+
+// Создаём writer для Twist (добавляем этот код)
+const twistWriter = new MessageWriter(
+  "geometry_msgs::Twist",
+  twistDefinition,
   { kind: 0x01 } // XCDR не требуется
 );
 
@@ -1476,6 +1483,48 @@ function renderLidar(scan: any) {
   }
 }
 
+// Добавьте эту функцию в ваш main.ts
+async function pubTwist(linear: number, angular: number) {
+  const robotName = robotSelect.value;
+  if (!robotName) {
+    console.warn("Не выбран робот для отправки команды");
+    return;
+  }
+
+  try {
+    // Формируем сообщение Twist
+    const twist: Twist = {
+      linear: { x: linear, y: 0, z: 0 },  // Для дифференциального робота используем только x
+      angular: { x: 0, y: 0, z: angular }  // Для дифференциального робота используем только z
+    };
+
+    // Сериализуем в CDR
+    const cdrBytes: Uint8Array = twistWriter.writeMessage(twist);
+
+    // URL для топика cmd_vel
+    const key = `robots/${robotName}/cmd_vel`;
+    const url = `${ZENOH_REST_BASE}/${key}`;
+
+    const response = await fetch(url, {
+      method: "PUT",  // Важно: используем PUT для публикации в топик
+      headers: {
+        "Content-Type": "application/octet-stream",
+      },
+      body: cdrBytes,
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+    }
+
+    console.log(`✅ Команда скорости отправлена: linear=${linear.toFixed(2)}, angular=${angular.toFixed(2)}`);
+  } catch (err) {
+    console.error("❌ Ошибка отправки команды скорости:", err);
+    statusEl.textContent = `⚠️ Ошибка отправки команды: ${
+      err instanceof Error ? err.message : "Неизвестная ошибка"
+    }`;
+  }
+}
 // Сохраняем последний лидарный скан для перерисовки при изменении позиции робота
 let lastLidarScan: any = null;
 
@@ -1569,7 +1618,7 @@ function initGamepadControl() {
     }
 
     // Отправка команды остановки
-    //pubTwist(0, 0);
+    pubTwist(0, 0);
 
     // Обновление UI
     gamepadConnected = false;
@@ -1602,7 +1651,7 @@ function initGamepadControl() {
 
     // Если оба значения в мертвой зоне, отправляем 0 (остановка)
     if (pitchValue === 0 && yawValue === 0) {
-      //pubTwist(0, 0);
+      pubTwist(0, 0);
       return;
     }
 
@@ -1612,7 +1661,7 @@ function initGamepadControl() {
     // Обновляем визуализацию робота
     updateRobotVisualization(linear, angular);
     // Отправляем команду через существующую функцию
-    //pubTwist(linear, angular);
+    pubTwist(linear, angular);
   }
 
   function updateGamepadVisualization(pitch: number, yaw: number) {

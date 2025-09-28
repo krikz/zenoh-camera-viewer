@@ -69,3 +69,25 @@ export type NavigateToPoseGoal = {
   };
   behavior_tree: string;
 };
+
+
+const TWIST_IDL = `
+  module geometry_msgs {
+    struct Vector3 {
+      double x;
+      double y;
+      double z;
+    };
+
+    struct Twist {
+      Vector3 linear;
+      Vector3 angular;
+    };
+  };
+`;
+
+export const twistDefinition = parseIDL(TWIST_IDL);
+export type Twist = {
+  linear: { x: number; y: number; z: number };
+  angular: { x: number; y: number; z: number };
+};
