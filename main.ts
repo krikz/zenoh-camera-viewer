@@ -193,9 +193,18 @@ const odometrySchema = {
                   value: {
                     type: "dictionary",
                     items: {
-                      x: { index: 0, value: { type: "float", len: 64, format: "number" } },
-                      y: { index: 1, value: { type: "float", len: 64, format: "number" } },
-                      z: { index: 2, value: { type: "float", len: 64, format: "number" } },
+                      x: {
+                        index: 0,
+                        value: { type: "float", len: 64, format: "number" },
+                      },
+                      y: {
+                        index: 1,
+                        value: { type: "float", len: 64, format: "number" },
+                      },
+                      z: {
+                        index: 2,
+                        value: { type: "float", len: 64, format: "number" },
+                      },
                     },
                   },
                 },
@@ -204,10 +213,22 @@ const odometrySchema = {
                   value: {
                     type: "dictionary",
                     items: {
-                      x: { index: 0, value: { type: "float", len: 64, format: "number" } },
-                      y: { index: 1, value: { type: "float", len: 64, format: "number" } },
-                      z: { index: 2, value: { type: "float", len: 64, format: "number" } },
-                      w: { index: 3, value: { type: "float", len: 64, format: "number" } },
+                      x: {
+                        index: 0,
+                        value: { type: "float", len: 64, format: "number" },
+                      },
+                      y: {
+                        index: 1,
+                        value: { type: "float", len: 64, format: "number" },
+                      },
+                      z: {
+                        index: 2,
+                        value: { type: "float", len: 64, format: "number" },
+                      },
+                      w: {
+                        index: 3,
+                        value: { type: "float", len: 64, format: "number" },
+                      },
                     },
                   },
                 },
@@ -267,9 +288,18 @@ const tfSchema = {
                     value: {
                       type: "dictionary",
                       items: {
-                        x: { index: 0, value: { type: "float", len: 64, format: "number" } },
-                        y: { index: 1, value: { type: "float", len: 64, format: "number" } },
-                        z: { index: 2, value: { type: "float", len: 64, format: "number" } },
+                        x: {
+                          index: 0,
+                          value: { type: "float", len: 64, format: "number" },
+                        },
+                        y: {
+                          index: 1,
+                          value: { type: "float", len: 64, format: "number" },
+                        },
+                        z: {
+                          index: 2,
+                          value: { type: "float", len: 64, format: "number" },
+                        },
                       },
                     },
                   },
@@ -278,10 +308,22 @@ const tfSchema = {
                     value: {
                       type: "dictionary",
                       items: {
-                        x: { index: 0, value: { type: "float", len: 64, format: "number" } },
-                        y: { index: 1, value: { type: "float", len: 64, format: "number" } },
-                        z: { index: 2, value: { type: "float", len: 64, format: "number" } },
-                        w: { index: 3, value: { type: "float", len: 64, format: "number" } },
+                        x: {
+                          index: 0,
+                          value: { type: "float", len: 64, format: "number" },
+                        },
+                        y: {
+                          index: 1,
+                          value: { type: "float", len: 64, format: "number" },
+                        },
+                        z: {
+                          index: 2,
+                          value: { type: "float", len: 64, format: "number" },
+                        },
+                        w: {
+                          index: 3,
+                          value: { type: "float", len: 64, format: "number" },
+                        },
                       },
                     },
                   },
@@ -341,9 +383,18 @@ const pathSchema = {
                     value: {
                       type: "dictionary",
                       items: {
-                        x: { index: 0, value: { type: "float", len: 64, format: "number" } },
-                        y: { index: 1, value: { type: "float", len: 64, format: "number" } },
-                        z: { index: 2, value: { type: "float", len: 64, format: "number" } },
+                        x: {
+                          index: 0,
+                          value: { type: "float", len: 64, format: "number" },
+                        },
+                        y: {
+                          index: 1,
+                          value: { type: "float", len: 64, format: "number" },
+                        },
+                        z: {
+                          index: 2,
+                          value: { type: "float", len: 64, format: "number" },
+                        },
                       },
                     },
                   },
@@ -352,10 +403,22 @@ const pathSchema = {
                     value: {
                       type: "dictionary",
                       items: {
-                        x: { index: 0, value: { type: "float", len: 64, format: "number" } },
-                        y: { index: 1, value: { type: "float", len: 64, format: "number" } },
-                        z: { index: 2, value: { type: "float", len: 64, format: "number" } },
-                        w: { index: 3, value: { type: "float", len: 64, format: "number" } },
+                        x: {
+                          index: 0,
+                          value: { type: "float", len: 64, format: "number" },
+                        },
+                        y: {
+                          index: 1,
+                          value: { type: "float", len: 64, format: "number" },
+                        },
+                        z: {
+                          index: 2,
+                          value: { type: "float", len: 64, format: "number" },
+                        },
+                        w: {
+                          index: 3,
+                          value: { type: "float", len: 64, format: "number" },
+                        },
                       },
                     },
                   },
@@ -389,7 +452,7 @@ let currentPlan: any[] = [];
 // Трансформация от map к odom
 let mapToOdom = {
   translation: { x: 0, y: 0, z: 0 },
-  rotation: { x: 0, y: 0, z: 0, w: 1 }
+  rotation: { x: 0, y: 0, z: 0, w: 1 },
 };
 
 async function fetchRobots() {
@@ -491,12 +554,12 @@ function cleanupRobotFeeds() {
     planEventSource.close();
     planEventSource = null;
   }
-  
+
   // Очищаем лидарный холст при смене робота
   if (lidarCtx) {
     lidarCtx.clearRect(0, 0, lidarCanvas.width, lidarCanvas.height);
   }
-  
+
   // Очищаем текущую траекторию
   currentPlan = [];
 }
@@ -547,12 +610,12 @@ function handleMapEvent(event: MessageEvent) {
 
     const mapMsg = parsed.payload;
     currentMap = mapMsg;
-    
+
     // Очищаем лидарный холст при обновлении карты
     if (lidarCtx) {
       lidarCtx.clearRect(0, 0, lidarCanvas.width, lidarCanvas.height);
     }
-    
+
     renderMap(mapMsg);
   } catch (err) {
     console.error("[SSE Map] Обработка падения:", err);
@@ -601,20 +664,23 @@ function handleOdometryEvent(event: MessageEvent) {
     });
 
     const odom = parsed.payload;
-    
+
     // Извлекаем позицию в системе odom
     const odomX = odom.pose.pose.position.x;
     const odomY = odom.pose.pose.position.y;
     const q = odom.pose.pose.orientation;
-    
+
     // Преобразуем кватернион в угол для 2D
-    const odomTheta = Math.atan2(2 * (q.w * q.z + q.x * q.y), 1 - 2 * (q.y * q.y + q.z * q.z));
-    
+    const odomTheta = Math.atan2(
+      2 * (q.w * q.z + q.x * q.y),
+      1 - 2 * (q.y * q.y + q.z * q.z)
+    );
+
     // Преобразуем позицию из системы odom в систему map
     const mapPose = transformOdomToMap(odomX, odomY, odomTheta);
-    
+
     robotPosition = mapPose;
-    
+
     // Перерисовываем лидар
     if (currentMap) {
       renderLidar(null); // null означает, что мы перерисовываем без новых данных лидара
@@ -642,13 +708,16 @@ function handleTfEvent(event: MessageEvent) {
     });
 
     const tfMsg = parsed.payload;
-    
+
     // Ищем трансформацию от map к odom
     for (const transform of tfMsg.transforms) {
-      if (transform.header.frame_id === "map" && transform.child_frame_id === "odom") {
+      if (
+        transform.header.frame_id === "map" &&
+        transform.child_frame_id === "odom"
+      ) {
         mapToOdom = {
           translation: transform.transform.translation,
-          rotation: transform.transform.rotation
+          rotation: transform.transform.rotation,
         };
         break;
       }
@@ -676,13 +745,13 @@ function handlePlanEvent(event: MessageEvent) {
     });
 
     const path = parsed.payload;
-    
+
     // Сохраняем траекторию
     currentPlan = path.poses.map((pose: any) => ({
       x: pose.pose.position.x,
-      y: pose.pose.position.y
+      y: pose.pose.position.y,
     }));
-    
+
     // Перерисовываем лидар, чтобы обновить траекторию
     if (currentMap) {
       renderLidar(null);
@@ -697,23 +766,23 @@ function transformOdomToMap(odomX: number, odomY: number, odomTheta: number) {
   // Трансформация из map в odom
   const { x: tx, y: ty } = mapToOdom.translation;
   const { x: qx, y: qy, z: qz, w: qw } = mapToOdom.rotation;
-  
+
   // Вычисляем угол поворота трансформации map->odom
   const mapToOdomTheta = Math.atan2(
-    2 * (qw * qz + qx * qy), 
+    2 * (qw * qz + qx * qy),
     1 - 2 * (qy * qy + qz * qz)
   );
-  
+
   // Обратная трансформация: из odom в map
   // Сначала применяем обратный поворот, затем обратное смещение
   const cosTheta = Math.cos(-mapToOdomTheta);
   const sinTheta = Math.sin(-mapToOdomTheta);
-  
+
   // Смещение в системе map
   const mapX = tx + cosTheta * odomX - sinTheta * odomY;
   const mapY = ty + sinTheta * odomX + cosTheta * odomY;
   const mapTheta = odomTheta - mapToOdomTheta;
-  
+
   return { x: mapX, y: mapY, theta: mapTheta };
 }
 
@@ -778,9 +847,7 @@ function startLidarFeed(robotName: string) {
 
   // Проверка поддержки EventSource
   if (typeof EventSource === "undefined") {
-    console.warn(
-      "EventSource не поддерживается. Лидар не будет отображаться."
-    );
+    console.warn("EventSource не поддерживается. Лидар не будет отображаться.");
     return;
   }
 
@@ -832,9 +899,7 @@ function startTfFeed(robotName: string) {
 
   // Проверка поддержки EventSource
   if (typeof EventSource === "undefined") {
-    console.warn(
-      "EventSource не поддерживается. TF не будет обрабатываться."
-    );
+    console.warn("EventSource не поддерживается. TF не будет обрабатываться.");
     return;
   }
 
@@ -859,9 +924,7 @@ function startPlanFeed(robotName: string) {
 
   // Проверка поддержки EventSource
   if (typeof EventSource === "undefined") {
-    console.warn(
-      "EventSource не поддерживается. План не будет отображаться."
-    );
+    console.warn("EventSource не поддерживается. План не будет отображаться.");
     return;
   }
 
@@ -1072,8 +1135,12 @@ async function startExploration(robotName: string) {
       }
 
       // Получаем текущую позицию робота в системе карты
-      const robotCellX = Math.round((robotPosition.x - map.info.origin.position.x) / map.info.resolution);
-      const robotCellY = Math.round((robotPosition.y - map.info.origin.position.y) / map.info.resolution);
+      const robotCellX = Math.round(
+        (robotPosition.x - map.info.origin.position.x) / map.info.resolution
+      );
+      const robotCellY = Math.round(
+        (robotPosition.y - map.info.origin.position.y) / map.info.resolution
+      );
 
       const goalCell = chooseClosestFrontier(unvisited, robotCellX, robotCellY);
       if (!goalCell) break;
@@ -1194,14 +1261,14 @@ function renderMap(msg: OccupancyGrid) {
 
 function renderLidar(scan: any) {
   if (!currentMap || !lidarCtx) return;
-  
+
   // Очищаем только лидарный холст
   lidarCtx.clearRect(0, 0, lidarCanvas.width, lidarCanvas.height);
-  
+
   const { width, height, resolution, origin } = currentMap.info;
   let ranges = [];
   let angle_min, angle_max, angle_increment;
-  
+
   // Если scan null, то мы перерисовываем без новых данных лидара (только позиция робота изменилась)
   if (scan) {
     ({ ranges, angle_min, angle_max, angle_increment } = scan);
@@ -1213,7 +1280,7 @@ function renderLidar(scan: any) {
       return; // Нечего рисовать
     }
   }
-  
+
   // Сохраняем для последующих перерисовок при изменении позиции робота
   if (scan) {
     lastLidarScan = scan;
@@ -1232,19 +1299,25 @@ function renderLidar(scan: any) {
   lidarCtx.lineWidth = 1;
 
   const angleCount = ranges.length;
-  
+
   // Отрисовка векторов направления для лидара (каждый 5-й луч)
   lidarCtx.strokeStyle = "rgba(255, 165, 0, 0.9)";
   lidarCtx.lineWidth = 1;
-  
+
   for (let i = 0; i < angleCount; i += 1) {
     const range = ranges[i];
-    if (range === undefined || range === null || range === Infinity || 
-        range < (scan?.range_min || 0) || range > (scan?.range_max || Infinity)) continue;
+    if (
+      range === undefined ||
+      range === null ||
+      range === Infinity ||
+      range < (scan?.range_min || 0) ||
+      range > (scan?.range_max || Infinity)
+    )
+      continue;
 
     // Поворот на 90 градусов против часовой стрелки
     const angle = angle_min + i * angle_increment;
-    
+
     // Преобразуем в координаты относительно робота
     const x = range * Math.cos(angle);
     const y = range * Math.sin(angle);
@@ -1262,31 +1335,37 @@ function renderLidar(scan: any) {
 
     // Преобразуем в пиксели на холсте
     const pixelX = offsetX + mapX * scale;
-    const pixelY = offsetY + ( mapY) * scale;
-    
+    const pixelY = offsetY + mapY * scale;
+
     // Рисуем вектор от робота к точке
     const robotMapX = (robotPosition.x - origin.position.x) / resolution;
     const robotMapY = (robotPosition.y - origin.position.y) / resolution;
     const robotPixelX = offsetX + robotMapX * scale;
-    const robotPixelY = offsetY + ( robotMapY) * scale;
+    const robotPixelY = offsetY + robotMapY * scale;
 
     lidarCtx.beginPath();
     lidarCtx.moveTo(robotPixelX, robotPixelY);
     lidarCtx.lineTo(pixelX, pixelY);
     lidarCtx.stroke();
   }
-  
+
   // Основная отрисовка точек лидара
   lidarCtx.fillStyle = "rgba(0, 255, 0, 0.7)";
-  
+
   for (let i = 0; i < angleCount; i++) {
     const range = ranges[i];
-    if (range === undefined || range === null || range === Infinity || 
-        range < (scan?.range_min || 0) || range > (scan?.range_max || Infinity)) continue;
+    if (
+      range === undefined ||
+      range === null ||
+      range === Infinity ||
+      range < (scan?.range_min || 0) ||
+      range > (scan?.range_max || Infinity)
+    )
+      continue;
 
     // Поворот на 90 градусов против часовой стрелки (как в Python-примере)
     const angle = angle_min + i * angle_increment;
-    
+
     // Преобразуем в координаты относительно робота
     const x = range * Math.cos(angle);
     const y = range * Math.sin(angle);
@@ -1307,48 +1386,48 @@ function renderLidar(scan: any) {
     // В ROS начало карты (0,0) находится в левом нижнем углу
     // В canvas начало (0,0) находится в левом верхнем углу
     const pixelX = offsetX + mapX * scale;
-    const pixelY = offsetY + ( mapY) * scale;
+    const pixelY = offsetY + mapY * scale;
 
     // Рисуем точку
     lidarCtx.fillRect(pixelX, pixelY, 2, 2);
   }
-  
+
   // Отрисовка позиции робота
   const robotMapX = (robotPosition.x - origin.position.x) / resolution;
   const robotMapY = (robotPosition.y - origin.position.y) / resolution;
-  
+
   const robotPixelX = offsetX + robotMapX * scale;
-  const robotPixelY = offsetY + ( robotMapY) * scale;
-  
+  const robotPixelY = offsetY + robotMapY * scale;
+
   // Отрисовка робота как круга
   lidarCtx.beginPath();
   lidarCtx.arc(robotPixelX, robotPixelY, 5, 0, Math.PI * 2);
   lidarCtx.fillStyle = "rgba(255, 0, 0, 0.7)";
   lidarCtx.fill();
-  
+
   // Отрисовка направления робота
   const directionX = robotPixelX + 30 * Math.cos(robotPosition.theta + Math.PI);
   const directionY = robotPixelY + 30 * Math.sin(robotPosition.theta + Math.PI);
-  
+
   lidarCtx.beginPath();
   lidarCtx.moveTo(robotPixelX, robotPixelY);
   lidarCtx.lineTo(directionX, directionY);
   lidarCtx.strokeStyle = "rgba(0, 0, 255, 0.7)";
   lidarCtx.lineWidth = 4;
   lidarCtx.stroke();
-  
+
   // Отрисовка текущей цели (если есть)
   if (currentGoal) {
     const goalMapX = (currentGoal.x - origin.position.x) / resolution;
     const goalMapY = (currentGoal.y - origin.position.y) / resolution;
-    
+
     const goalPixelX = offsetX + goalMapX * scale;
-    const goalPixelY = offsetY + ( goalMapY) * scale;
-    
+    const goalPixelY = offsetY + goalMapY * scale;
+
     // Отрисовка цели как квадрата
     lidarCtx.fillStyle = "rgba(255, 0, 0, 0.5)";
     lidarCtx.fillRect(goalPixelX - 4, goalPixelY - 4, 8, 8);
-    
+
     // Линия от робота к цели
     lidarCtx.beginPath();
     lidarCtx.moveTo(robotPixelX, robotPixelY);
@@ -1357,37 +1436,39 @@ function renderLidar(scan: any) {
     lidarCtx.lineWidth = 1;
     lidarCtx.stroke();
   }
-  
+
   // Отрисовка траектории из /plan
   if (currentPlan && currentPlan.length > 1) {
     lidarCtx.beginPath();
     lidarCtx.moveTo(
       offsetX + ((currentPlan[0].x - origin.position.x) / resolution) * scale,
-      offsetY + ( (currentPlan[0].y - origin.position.y) / resolution) * scale
+      offsetY + ((currentPlan[0].y - origin.position.y) / resolution) * scale
     );
-    
+
     for (let i = 1; i < currentPlan.length; i++) {
-      const px = offsetX + ((currentPlan[i].x - origin.position.x) / resolution) * scale;
-      const py = offsetY + ( (currentPlan[i].y - origin.position.y) / resolution) * scale;
-      
+      const px =
+        offsetX + ((currentPlan[i].x - origin.position.x) / resolution) * scale;
+      const py =
+        offsetY + ((currentPlan[i].y - origin.position.y) / resolution) * scale;
+
       lidarCtx.lineTo(px, py);
     }
-    
+
     lidarCtx.strokeStyle = "rgba(0, 0, 255, 0.7)";
     lidarCtx.lineWidth = 2;
     lidarCtx.stroke();
-    
+
     // Отрисовка текущей точки траектории
     if (currentPlan.length > 0) {
       const currentGoalX = currentPlan[0].x;
       const currentGoalY = currentPlan[0].y;
-      
+
       const goalMapX = (currentGoalX - origin.position.x) / resolution;
       const goalMapY = (currentGoalY - origin.position.y) / resolution;
-      
+
       const goalPixelX = offsetX + goalMapX * scale;
-      const goalPixelY = offsetY + ( goalMapY) * scale;
-      
+      const goalPixelY = offsetY + goalMapY * scale;
+
       // Отрисовка текущей цели как квадрата
       lidarCtx.fillStyle = "rgba(0, 255, 0, 0.7)";
       lidarCtx.fillRect(goalPixelX - 4, goalPixelY - 4, 8, 8);
@@ -1399,152 +1480,150 @@ function renderLidar(scan: any) {
 let lastLidarScan: any = null;
 
 // Сохраняем текущую цель для отрисовки
-let currentGoal: { x: number, y: number } | null = null;
+let currentGoal: { x: number; y: number } | null = null;
 
-// Глобальные переменные для геймпада
+// Глобальные переменные для геймпад
+// Индексы осей для Radiomaster (по вашим данным)
+const PITCH_AXIS = 1; // Движение вперед/назад (2-я ось, индекс 1)
+const YAW_AXIS = 3; // Поворот влево/вправо (4-я ось, индекс 3)
 let gamepadConnected = false;
 let gamepadInterval: number | null = null;
-const MAX_LINEAR_SPEED = 0.5;  // Максимальная линейная скорость
+const MAX_LINEAR_SPEED = 0.5; // Максимальная линейная скорость
 const MAX_ANGULAR_SPEED = 1.0; // Максимальная угловая скорость
-const DEADZONE = 0.1;          // Мертвая зона стиков
-
-// Получаем элемент кнопки геймпада
-// Элементы интерфейса
-const gamepadBtn = document.getElementById("gamepadBtn") as HTMLButtonElement;
-const gamepadOverlay = document.getElementById("gamepadOverlay")!;
-const pitchIndicator = document.getElementById("pitchIndicator")!;
-const yawIndicator = document.getElementById("yawIndicator")!;
-
-// В функции connectGamepad замените:
-gamepadOverlay.style.display = "block";
-
-// В функции disconnectGamepad замените:
-gamepadOverlay.style.display = "none";
-
-// Проверка поддержки Gamepad API
-function isGamepadSupported(): boolean {
-  return !!navigator.getGamepads;
-}
+const DEADZONE = 0.1; // Мертвая зона стиков
 
 // Инициализация геймпада
 function initGamepadControl() {
-  if (!isGamepadSupported()) {
+  const gamepadBtn = document.getElementById("gamepadBtn") as HTMLButtonElement;
+  const gamepadOverlay = document.getElementById("gamepadOverlay")!;
+  const pitchIndicator = document.getElementById("pitchIndicator")!;
+  const yawIndicator = document.getElementById("yawIndicator")!;
+
+  if (!("getGamepads" in navigator)) {
     gamepadBtn.disabled = true;
     gamepadBtn.title = "Браузер не поддерживает Gamepad API";
     gamepadBtn.textContent = "🎮 Gamepad недоступен";
     return;
   }
-  
-  // Обработчик нажатия на кнопку подключения
-  gamepadBtn.addEventListener("click", toggleGamepadConnection);
-  
-  // Автоматическое подключение при подключении геймпада
+
+  // Обработчик подключения геймпада
   window.addEventListener("gamepadconnected", (e: GamepadEvent) => {
-    console.log("Геймпад подключен:", e.gamepad);
     if (!gamepadConnected) {
       connectGamepad();
     }
   });
-  
-  // Автоматическое отключение при отсоединении геймпада
+
+  // Обработчик отключения геймпада
   window.addEventListener("gamepaddisconnected", () => {
     if (gamepadConnected) {
       disconnectGamepad();
     }
   });
-}
 
-// Переключение состояния подключения геймпада
-function toggleGamepadConnection() {
-  if (gamepadConnected) {
-    disconnectGamepad();
-  } else {
-    connectGamepad();
-  }
-}
-
-// Подключение геймпада
-function connectGamepad() {
-  const gamepads = navigator.getGamepads();
-  let foundGamepad = null;
-  
-  // Поиск подключенного геймпада
-  for (let i = 0; i < gamepads.length; i++) {
-    if (gamepads[i]) {
-      foundGamepad = gamepads[i];
-      break;
+  // Обработчик нажатия кнопки
+  gamepadBtn.addEventListener("click", () => {
+    if (gamepadConnected) {
+      disconnectGamepad();
+    } else {
+      connectGamepad();
     }
+  });
+
+  function connectGamepad() {
+    const gamepads = navigator.getGamepads();
+    let gamepadFound = false;
+
+    for (let i = 0; i < gamepads.length; i++) {
+      if (gamepads[i]) {
+        gamepadFound = true;
+        break;
+      }
+    }
+
+    if (!gamepadFound) {
+      statusEl.textContent =
+        "⚠️ Нажмите любую кнопку на геймпаде для активации";
+      return;
+    }
+
+    // Настройка интервала опроса
+    if (gamepadInterval) {
+      clearInterval(gamepadInterval);
+    }
+
+    gamepadInterval = window.setInterval(readGamepad, 50); // 20 Гц
+    gamepadConnected = true;
+
+    // Обновление UI
+    gamepadBtn.classList.add("connected");
+    gamepadBtn.textContent = "⏹ Disconnect Gamepad";
+    gamepadOverlay.style.display = "block";
+    statusEl.textContent = "🎮 Геймпад подключен";
   }
-  
-  if (!foundGamepad) {
-    statusEl.textContent = "⚠️ Нажмите любую кнопку на геймпаде для активации";
-    return;
+
+  function disconnectGamepad() {
+    if (gamepadInterval) {
+      clearInterval(gamepadInterval);
+      gamepadInterval = null;
+    }
+
+    // Отправка команды остановки
+    //pubTwist(0, 0);
+
+    // Обновление UI
+    gamepadConnected = false;
+    gamepadBtn.classList.remove("connected");
+    gamepadBtn.textContent = "🎮 Connect Gamepad";
+    gamepadOverlay.style.display = "none";
+    statusEl.textContent = "Геймпад отключен";
   }
-  
-  // Настройка интервала опроса
-  if (gamepadInterval) {
-    clearInterval(gamepadInterval);
+
+  function readGamepad() {
+    const gamepads = navigator.getGamepads();
+    if (gamepads.length === 0 || !gamepads[0]) {
+      disconnectGamepad();
+      return;
+    }
+
+    const gamepad = gamepads[0];
+
+    // Получаем данные с нужных осей (по вашим данным)
+    const pitch = gamepad.axes[PITCH_AXIS]; // Движение вперед/назад (индекс 1)
+    const yaw = gamepad.axes[YAW_AXIS]; // Поворот влево/вправо (индекс 3)
+
+    // Применяем мертвую зону
+    const pitchValue = Math.abs(pitch) > DEADZONE ? pitch : 0;
+    const yawValue = Math.abs(yaw) > DEADZONE ? yaw : 0;
+
+    // Обновляем индикаторы
+    updateGamepadVisualization(pitchValue, yawValue);
+
+    // Если оба значения в мертвой зоне, отправляем 0 (остановка)
+    if (pitchValue === 0 && yawValue === 0) {
+      //pubTwist(0, 0);
+      return;
+    }
+
+    // Преобразуем в линейную и угловую скорость
+    const linear = pitchValue * MAX_LINEAR_SPEED;
+    const angular = yawValue * MAX_ANGULAR_SPEED;
+
+    // Отправляем команду через существующую функцию
+    //pubTwist(linear, angular);
   }
-  
-  gamepadInterval = window.setInterval(readGamepad, 50); // 20 Гц
-  gamepadConnected = true;
-  
-  // Обновление UI
-  gamepadBtn.classList.add("connected");
-  gamepadBtn.textContent = "⏹ Disconnect Gamepad";
-  statusEl.textContent = `🎮 Геймпад подключен: ${foundGamepad.id}`;
-  
-  console.log("Геймпад активирован:", foundGamepad);
+
+  function updateGamepadVisualization(pitch: number, yaw: number) {
+    // Для pitch: -1 (назад) -> 0%, 0 (нейтраль) -> 50%, 1 (вперед) -> 100%
+    const pitchPercent = (pitch + 1) * 50;
+    pitchIndicator.style.width = `${pitchPercent}%`;
+    pitchIndicator.style.backgroundColor = "#f44336";
+
+    // Для yaw: -1 (вправо) -> 0%, 0 (нейтраль) -> 50%, 1 (влево) -> 100%
+    const yawPercent = (yaw + 1) * 50;
+    yawIndicator.style.width = `${yawPercent}%`;
+    yawIndicator.style.backgroundColor = "#f44336";
+  }
 }
 
-// Отключение геймпада
-function disconnectGamepad() {
-  if (gamepadInterval) {
-    clearInterval(gamepadInterval);
-    gamepadInterval = null;
-  }
-  
-  // Отправка команды остановки
-  pubTwist(0, 0);
-  
-  // Обновление UI
-  gamepadConnected = false;
-  gamepadBtn.classList.remove("connected");
-  gamepadBtn.textContent = "🎮 Connect Gamepad";
-  statusEl.textContent = "Геймпад отключен";
-}
-
-// Чтение данных геймпада и отправка команд
-function readGamepad() {
-  const gamepads = navigator.getGamepads();
-  if (gamepads.length === 0 || !gamepads[0]) {
-    disconnectGamepad();
-    return;
-  }
-  
-  const gamepad = gamepads[0];
-  
-  // Получаем данные со стиков (Radiomaster обычно использует axes 0-3)
-  // Проверьте в консоли, какие оси у вашего устройства
-  const leftStickX = gamepad.axes[0]; // Обычно левый стик X
-  const leftStickY = gamepad.axes[1]; // Обычно левый стик Y
-  
-  console.log("Оси геймпада:", gamepad.axes);
-  
-  // Применяем мертвую зону
-  const x = Math.abs(leftStickX) > DEADZONE ? leftStickX : 0;
-  const y = Math.abs(leftStickY) > DEADZONE ? -leftStickY : 0; // Инвертируем Y (вверх - отрицательное значение)
-  
-  // Преобразуем в линейную и угловую скорость
-  // В ROS2 для дифференциального робота:
-  // - linear.x: движение вперед/назад
-  // - angular.z: поворот
-  const linear = y * MAX_LINEAR_SPEED;
-  const angular = x * MAX_ANGULAR_SPEED;
-  
-  // Отправляем команду через существующую функцию
-  //pubTwist(linear, angular);
-}
-
-// Добавьте это в вашу функцию инициализации (после fetchRobots)
+// Вызовите эту функцию после инициализации остальных компонентов
 initGamepadControl();
