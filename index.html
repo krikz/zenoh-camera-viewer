@@ -196,6 +196,47 @@
       display: block;
       margin: 0 auto;
     }
+
+    .navbar .mode-btn {
+      background: #666;
+      color: white;
+      padding: 8px 12px;
+      font-size: 14px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+
+    .navbar .mode-btn.active {
+      background: #007bff;
+      box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.3);
+    }
+
+    /* Временный полигон */
+    .polygon-selection {
+      position: absolute;
+      pointer-events: none;
+      border: 2px dashed #ff9800;
+      background-color: rgba(255, 152, 0, 0.1);
+      z-index: 8;
+    }
+
+    /* Вейпоинты */
+    .waypoint {
+      position: absolute;
+      width: 12px;
+      height: 12px;
+      background: #ffeb3b;
+      border: 2px solid #f44336;
+      border-radius: 50%;
+      transform: translate(-50%, -50%);
+      z-index: 9;
+      pointer-events: none;
+    }
+
+    #lidarCanvas {
+      pointer-events: none;
+    }
   </style>
 </head>
 
@@ -207,6 +248,9 @@
     <button id="exploreBtn">▶️ Explore</button>
     <!-- Новая кнопка для геймпада -->
     <button id="gamepadBtn" class="gamepad-btn">🎮 Connect Gamepad</button>
+    <button id="modeSingle" class="mode-btn active">🎯 Одиночная цель</button>
+    <button id="modeWaypoints" class="mode-btn">📍 Вейпоинты</button>
+    <button id="modePolygon" class="mode-btn">🟦 Полигон змейкой</button>
   </nav>
 
   <div class="main-area">

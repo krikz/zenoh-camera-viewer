@@ -1400,6 +1400,7 @@ function resizeCanvases() {
     cameraCanvas.width = camWidth;
     cameraCanvas.height = camWidth * 0.75; // Сохраняем соотношение 4:3
   }
+  renderWaypoints();
 }
 
 window.addEventListener("load", resizeCanvases);
@@ -1682,6 +1683,7 @@ function renderLidar(scan: any) {
       lidarCtx.fillRect(goalPixelX - 4, goalPixelY - 4, 8, 8);
     }
   }
+  renderWaypoints();
 }
 
 // Добавьте эту функцию в ваш main.ts
@@ -2040,3 +2042,328 @@ function updateRobotVisualization(linear: number, angular: number) {
 }
 // Вызовите эту функцию после инициализации остальных компонентов
 initGamepadControl();
+
+// === РЕЖИМЫ ИНТЕРАКТИВНОСТИ ===
+type Mode = "single" | "waypoints" | "polygon";
+let currentMode: Mode = "single";
+
+// DOM элементы
+const modeSingleBtn = document.getElementById("modeSingle")!;
+const modeWaypointsBtn = document.getElementById("modeWaypoints")!;
+const modePolygonBtn = document.getElementById("modePolygon")!;
+
+// Хранилище вейпоинтов
+let waypoints: Array<{ x: number; y: number }> = [];
+const waypointElements = new Map<number, HTMLElement>(); // DOM-элементы
+
+// Переменные для полигонального выделения
+let isSelectingPolygon = false;
+let selectionStart: { x: number; y: number } | null = null;
+let selectionRect: HTMLDivElement | null = null;
+
+// === ОБРАБОТКА РЕЖИМОВ ===
+function setActiveMode(mode: Mode) {
+  currentMode = mode;
+  [modeSingleBtn, modeWaypointsBtn, modePolygonBtn].forEach((btn) =>
+    btn.classList.remove("active")
+  );
+  if (mode === "single") modeSingleBtn.classList.add("active");
+  else if (mode === "waypoints") modeWaypointsBtn.classList.add("active");
+  else if (mode === "polygon") modePolygonBtn.classList.add("active");
+
+  // Очистка при смене режима
+  if (mode !== "polygon") {
+    stopPolygonSelection();
+  }
+  if (mode !== "waypoints") {
+    clearWaypoints(); // или оставить? можно закомментировать
+  }
+}
+
+modeSingleBtn.onclick = () => setActiveMode("single");
+modeWaypointsBtn.onclick = () => setActiveMode("waypoints");
+modePolygonBtn.onclick = () => setActiveMode("polygon");
+
+// === КЛИК ПО КАРТЕ ===
+mapCanvas.addEventListener(
+  "click",
+  async (e) => {
+    if (!currentMap || !robotSelect.value) return;
+
+    const rect = mapCanvas.getBoundingClientRect();
+    const scaleX = mapCanvas.width / rect.width;
+    const scaleY = mapCanvas.height / rect.height;
+    const clickX = (e.clientX - rect.left) * scaleX;
+    const clickY = (e.clientY - rect.top) * scaleY;
+
+    // Переводим пиксели в координаты карты
+    const worldPoint = pixelToMapCoords(clickX, clickY);
+    if (!worldPoint) return;
+
+    if (currentMode === "single") {
+      await sendGoal(robotSelect.value, worldPoint.x, worldPoint.y);
+      currentGoal = { x: worldPoint.x, y: worldPoint.y };
+      renderLidar(null); // перерисовать с новой целью
+    } else if (currentMode === "waypoints") {
+      addWaypoint(worldPoint.x, worldPoint.y);
+    } else if (currentMode === "polygon") {
+      startPolygonSelection(clickX, clickY);
+    }
+  }
+);
+
+// === ПОДДЕРЖКА ВЕЙПОИНТОВ ===
+function addWaypoint(x: number, y: number) {
+  waypoints.push({ x, y });
+  const el = document.createElement("div");
+  el.className = "waypoint";
+  el.style.left = `${x}px`; // будет обновлено в renderWaypoints()
+  el.style.top = `${y}px`;
+  document.body.appendChild(el);
+  waypointElements.set(waypoints.length - 1, el);
+
+  statusEl.textContent = `📍 Добавлен вейпоинт ${waypoints.length}`;
+  renderWaypoints(); // чтобы правильно позиционировать
+}
+
+async function executeWaypoints() {
+  if (waypoints.length === 0) {
+    statusEl.textContent = "⚠️ Нет вейпоинтов для выполнения";
+    return;
+  }
+
+  const robotName = robotSelect.value;
+  for (let i = 0; i < waypoints.length; i++) {
+    const wp = waypoints[i];
+    statusEl.textContent = `🧭 Еду к вейпоинту ${i + 1}/${waypoints.length}`;
+    await sendGoal(robotName, wp.x, wp.y);
+    currentGoal = wp;
+    renderLidar(null);
+
+    // Ждём завершения (упрощённо)
+    await new Promise((r) => setTimeout(r, 5000));
+  }
+  statusEl.textContent = "✅ Все вейпоинты пройдены";
+}
+
+// Кнопка запуска вейпоинтов (можно добавить в интерфейс)
+// Например: <button id="runWaypoints">▶️ Запустить вейпоинты</button>
+document.body.insertAdjacentHTML(
+  "beforeend",
+  `<button id="runWaypoints" style="
+    position: absolute; top: 10px; right: 10px; z-index: 100;
+    background: #007bff; color: white; border: none; padding: 8px 12px;
+    border-radius: 6px; cursor: pointer;
+  ">▶️ Запустить вейпоинты</button>`
+);
+(document.getElementById("runWaypoints") as HTMLButtonElement).onclick =
+  executeWaypoints;
+
+// Очистка вейпоинтов
+function clearWaypoints() {
+  waypoints.forEach((_, idx) => {
+    const el = waypointElements.get(idx);
+    if (el && el.parentNode) el.parentNode.removeChild(el);
+  });
+  waypointElements.clear();
+  waypoints = [];
+}
+
+// Добавь вызов renderWaypoints() в конец resizeCanvases() и после каждого изменения
+window.addEventListener("resize", renderWaypoints);
+// И после каждого добавления вейпоинта
+
+// === ОТОБРАЖЕНИЕ ВЕЙПОИНТОВ ===
+function renderWaypoints() {
+  if (!currentMap) return;
+  const { width, height, resolution, origin } = currentMap.info;
+  const scale = Math.min(mapCanvas.width / width, mapCanvas.height / height);
+  const offsetX = (mapCanvas.width - width * scale) / 2;
+  const offsetY = (mapCanvas.height - height * scale) / 2;
+
+  waypoints.forEach((wp, i) => {
+    const mapX = (wp.x - origin.position.x) / resolution;
+    const mapY = (wp.y - origin.position.y) / resolution;
+    const px = offsetX + mapX * scale;
+    const py = offsetY + mapY * scale;
+
+    const el = waypointElements.get(i);
+    if (el) {
+      el.style.left = `${px}px`;
+      el.style.top = `${py}px`;
+    }
+  });
+}
+
+// === ПОЛИГОН ЗМЕЙКОЙ ===
+function startPolygonSelection(startX: number, startY: number) {
+  isSelectingPolygon = true;
+  selectionStart = { x: startX, y: startY };
+
+  selectionRect = document.createElement("div");
+  selectionRect.className = "polygon-selection";
+  document.body.appendChild(selectionRect);
+
+  mapCanvas.style.cursor = "crosshair";
+
+  const moveHandler = (e: MouseEvent) => {
+    if (!isSelectingPolygon || !selectionStart) return;
+    const rect = mapCanvas.getBoundingClientRect();
+    let x = (e.clientX - rect.left) * scaleX;
+    let y = (e.clientY - rect.top) * scaleY;
+    updateSelectionRect(selectionStart.x, selectionStart.y, x, y);
+  };
+
+  const upHandler = (e: MouseEvent) => {
+    if (!isSelectingPolygon || !selectionStart) return;
+    const rect = mapCanvas.getBoundingClientRect();
+    const endX = (e.clientX - rect.left) * scaleX;
+    const endY = (e.clientY - rect.top) * scaleY;
+    finishPolygonSelection(selectionStart.x, selectionStart.y, endX, endY);
+    cleanupSelection();
+    window.removeEventListener("mousemove", moveHandler);
+    window.removeEventListener("mouseup", upHandler);
+  };
+
+  window.addEventListener("mousemove", moveHandler);
+  window.addEventListener("mouseup", upHandler);
+}
+
+function updateSelectionRect(x1: number, y1: number, x2: number, y2: number) {
+  const left = Math.min(x1, x2);
+  const top = Math.min(y1, y2);
+  const width = Math.abs(x2 - x1);
+  const height = Math.abs(y2 - y1);
+  if (selectionRect) {
+    selectionRect.style.left = `${left}px`;
+    selectionRect.style.top = `${top}px`;
+    selectionRect.style.width = `${width}px`;
+    selectionRect.style.height = `${height}px`;
+  }
+}
+
+function finishPolygonSelection(
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number
+) {
+  if (!currentMap) return;
+  const { width, height, resolution, origin } = currentMap.info;
+  const scale = Math.min(mapCanvas.width / width, mapCanvas.height / height);
+  const offsetX = (mapCanvas.width - width * scale) / 2;
+  const offsetY = (mapCanvas.height - height * scale) / 2;
+
+  // Обратное преобразование пикселей → ячейки карты
+  const cellFromPixel = (px: number, offset: number, scale: number) =>
+    Math.floor((px - offset) / scale);
+
+  const col1 = cellFromPixel(x1, offsetX, scale);
+  const row1 = cellFromPixel(y1, offsetY, scale);
+  const col2 = cellFromPixel(x2, offsetX, scale);
+  const row2 = cellFromPixel(y2, offsetY, scale);
+
+  const minX = Math.min(col1, col2);
+  const maxX = Math.max(col1, col2);
+  const minY = Math.min(row1, row2);
+  const maxY = Math.max(row1, row2);
+
+  // Генерируем змейку
+  const snakeWaypoints = generateSnakePath(
+    minX,
+    minY,
+    maxX,
+    maxY,
+    resolution,
+    origin.position
+  );
+  if (snakeWaypoints.length > 0) {
+    waypoints = snakeWaypoints;
+    renderWaypoints();
+    statusEl.textContent = `🐍 Сгенерировано ${snakeWaypoints.length} точек змейкой`;
+  } else {
+    statusEl.textContent = "⚠️ Полигон слишком мал для змейки";
+  }
+}
+
+function generateSnakePath(
+  minX: number,
+  minY: number,
+  maxX: number,
+  maxY: number,
+  resolution: number,
+  originPos: { x: number; y: number }
+): Array<{ x: number; y: number }> {
+  const points: Array<{ x: number; y: number }> = [];
+  const step = resolution * 2; // шаг между рядами
+  let goingRight = true;
+
+  for (let y = minY; y <= maxY; y += step / resolution) {
+    const worldY = y * resolution + originPos.y;
+    const worldXStart = minX * resolution + originPos.x;
+    const worldXEnd = maxX * resolution + originPos.x;
+
+    if (goingRight) {
+      points.push({ x: worldXStart, y: worldY });
+      points.push({ x: worldXEnd, y: worldY });
+    } else {
+      points.push({ x: worldXEnd, y: worldY });
+      points.push({ x: worldXStart, y: worldY });
+    }
+    goingRight = !goingRight;
+  }
+
+  return points;
+}
+
+function stopPolygonSelection() {
+  isSelectingPolygon = false;
+  selectionStart = null;
+  cleanupSelection();
+}
+
+function cleanupSelection() {
+  if (selectionRect && selectionRect.parentNode) {
+    selectionRect.parentNode.removeChild(selectionRect);
+  }
+  selectionRect = null;
+  mapCanvas.style.cursor = "default";
+}
+
+// === ПОМОЩЬ: Пиксель → Мир ===
+function pixelToMapCoords(
+  px: number,
+  py: number
+): { x: number; y: number } | null {
+  if (!currentMap) return null;
+  const { width, height, resolution, origin } = currentMap.info;
+  const scale = Math.min(mapCanvas.width / width, mapCanvas.height / height);
+  const offsetX = (mapCanvas.width - width * scale) / 2;
+  const offsetY = (mapCanvas.height - height * scale) / 2;
+
+  const mapX = (px - offsetX) / scale;
+  const mapY = (py - offsetY) / scale;
+
+  if (mapX < 0 || mapX >= width || mapY < 0 || mapY >= height) return null;
+
+  return {
+    x: mapX * resolution + origin.position.x,
+    y: mapY * resolution + origin.position.y,
+  };
+}
+
+// === ОБНОВЛЕНИЕ RENDER ===
+// Добавь в конец renderLidar():
+//   renderWaypoints();  // ← после всего остального
+// Пример:
+//
+//   if (currentPlan && currentPlan.length > 1) { ... }
+// }
+// renderWaypoints(); // <-- вот здесь
+//
+
+// Также добавь в resizeCanvases():
+//   renderWaypoints();
+
+// Инициализация
+setActiveMode("single"); // дефолтный режим
