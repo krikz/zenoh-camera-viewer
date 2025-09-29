@@ -22,6 +22,105 @@ const twistWriter = new MessageWriter(
   { kind: 0x01 } // XCDR не требуется
 );
 
+const SPEED_STEP = 0.05; // Increment/decrement step for speed
+const ROTATION_STEP = 1 * (Math.PI / 180); // Increment/decrement step for direction in radians (1 degree)
+
+// Add these new variables to track state
+let currentLinearSpeed = 0.0;
+let currentAngularSpeed = 0.0; // Represents the desired change in orientation over time
+let targetDirection = 0.0; // Current target direction in radians
+
+function toggleHelp() {
+  const overlay = document.getElementById('helpOverlay');
+  if (overlay) {
+    overlay.style.display = overlay.style.display === 'none' ? 'flex' : 'none';
+  }
+}
+
+document.addEventListener('keydown', handleKeyDown);
+
+function handleKeyDown(event: KeyboardEvent) {
+  let speedChanged = false;
+  let directionChanged = false;
+
+  switch (event.key) {
+    case 'ArrowUp':
+      event.preventDefault(); // Prevent page scrolling
+      currentLinearSpeed = Math.min(MAX_LINEAR_SPEED, currentLinearSpeed + SPEED_STEP);
+      speedChanged = true;
+      console.log(`Speed increased to: ${currentLinearSpeed.toFixed(2)}`); // Optional: Log for debugging
+      break;
+    case 'ArrowDown':
+      event.preventDefault(); // Prevent page scrolling
+      currentLinearSpeed = Math.max(-MAX_LINEAR_SPEED, currentLinearSpeed - SPEED_STEP); // Allow reverse
+      speedChanged = true;
+      console.log(`Speed decreased to: ${currentLinearSpeed.toFixed(2)}`); // Optional: Log for debugging
+      break;
+    case 'ArrowLeft':
+      event.preventDefault();
+      targetDirection += ROTATION_STEP;
+      directionChanged = true;
+      console.log(`Direction turned left to: ${(targetDirection * 180 / Math.PI).toFixed(1)}°`); // Optional: Log for debugging
+      break;
+    case 'ArrowRight':
+      event.preventDefault();
+      targetDirection -= ROTATION_STEP; // Negative because right turn is negative rotation
+      directionChanged = true;
+      console.log(`Direction turned right to: ${(targetDirection * 180 / Math.PI).toFixed(1)}°`); // Optional: Log for debugging
+      break;
+    case ' ':
+      event.preventDefault();
+      currentLinearSpeed = 0.0;
+      currentAngularSpeed = 0.0; // Stop rotation as well
+      speedChanged = true;
+      directionChanged = true; // Technically stops changing direction too
+      console.log(`Full stop requested.`); // Optional: Log for debugging
+      break;
+    case 'Escape':
+        toggleHelp(); // Close help if open
+        break;
+    default:
+      // Ignore other keys
+      break;
+  }
+
+  // If speed or direction changed, send the updated command
+  if (speedChanged || directionChanged) {
+     // Calculate angular speed based on target direction vs current robot theta
+     // This is a simplified approach - you might want a more sophisticated controller
+     // For now, let's assume the angular speed is proportional to the difference between
+     // the target direction and the current robot orientation (robotPosition.theta)
+     // and the desired change in speed.
+     // A simple proportional controller:
+     const directionError = targetDirection - robotPosition.theta;
+     // Use a small proportional gain (adjust as needed)
+     const Kp = 1.0;
+     // The angular speed command tries to correct the orientation error
+     // and also accounts for the desired linear speed if turning.
+     // For simplicity, if linear speed is non-zero and direction changed, apply angular correction.
+     if (directionChanged && currentLinearSpeed !== 0) {
+         currentAngularSpeed = Kp * directionError;
+         // Optionally limit angular speed
+         currentAngularSpeed = Math.max(-MAX_ANGULAR_SPEED, Math.min(MAX_ANGULAR_SPEED, currentAngularSpeed));
+     } else if (speedChanged && !directionChanged) {
+         // If only speed changed and direction is the same, angular speed remains based on previous error
+         // or we could set it to 0 if no turning is intended, depending on desired behavior.
+         // For now, let's assume no intentional turn means keep angular speed as calculated.
+         // If you want to stop turning when only speed changes, uncomment the line below:
+         // if (Math.abs(currentAngularSpeed) < 0.01) currentAngularSpeed = 0; // Small threshold to stop
+     }
+     // If both changed, the new angular speed based on error is already calculated above.
+
+    pubTwist(currentLinearSpeed, currentAngularSpeed);
+  }
+}
+
+// Find the showHelpBtn and attach the toggleHelp function
+const showHelpBtn = document.getElementById("showHelpBtn") as HTMLButtonElement;
+if (showHelpBtn) {
+  showHelpBtn.onclick = toggleHelp;
+}
+
 // DOM элементы
 const robotSelect = document.getElementById("robotSelect") as HTMLSelectElement;
 const exploreBtn = document.getElementById("exploreBtn") as HTMLButtonElement;
@@ -37,7 +136,8 @@ const lidarCtx = lidarCanvas.getContext("2d", { willReadFrequently: true })!;
 const cameraCtx = cameraCanvas.getContext("2d", { willReadFrequently: true })!;
 
 // Базовый URL — исправленные пробелы
-const ZENOH_REST_BASE = "https://zenoh.robbox.online";
+// const ZENOH_REST_BASE = "https://zenoh.robbox.online";
+const ZENOH_REST_BASE = "http://localhost:8000";
 
 // Схема для sensor_msgs/Image
 const imageSchema = {
@@ -1685,48 +1785,42 @@ function renderLidar(scan: any) {
 }
 
 // Добавьте эту функцию в ваш main.ts
-async function pubTwist(linear: number, angular: number) {
+async function pubTwist() { // No parameters needed now
   const robotName = robotSelect.value;
   if (!robotName) {
-    console.warn("Не выбран робот для отправки команды");
+    console.warn("Not selected robot for sending command");
     return;
   }
-
   try {
-    // Формируем сообщение Twist
+    // Use the global variables for speed
     const twist: Twist = {
-      linear: { x: linear, y: 0, z: 0 }, // Для дифференциального робота используем только x
-      angular: { x: 0, y: 0, z: angular }, // Для дифференциального робота используем только z
+      linear: { x: currentLinearSpeed, y: 0, z: 0 },
+      angular: { x: 0, y: 0, z: currentAngularSpeed },
     };
+    console.log(`Sending Twist: linear=${twist.linear.x.toFixed(2)}, angular=${twist.angular.z.toFixed(2)}`); // Log command
 
-    // Сериализуем в CDR
     const cdrBytes: Uint8Array = twistWriter.writeMessage(twist);
-
-    // URL для топика cmd_vel
     const key = `robots/${robotName}/cmd_vel`;
     const url = `${ZENOH_REST_BASE}/${key}`;
-
     const response = await fetch(url, {
-      method: "PUT", // Важно: используем PUT для публикации в топик
+      method: "PUT",
       headers: {
         "Content-Type": "application/octet-stream",
       },
       body: cdrBytes,
     });
-
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}: ${await response.text()}`);
     }
-
     console.log(
-      `✅ Команда скорости отправлена: linear=${linear.toFixed(
+      `✅ Velocity command sent: linear=${twist.linear.x.toFixed(
         2
-      )}, angular=${angular.toFixed(2)}`
+      )}, angular=${twist.angular.z.toFixed(2)}`
     );
   } catch (err) {
-    console.error("❌ Ошибка отправки команды скорости:", err);
-    statusEl.textContent = `⚠️ Ошибка отправки команды: ${
-      err instanceof Error ? err.message : "Неизвестная ошибка"
+    console.error("❌ Error sending velocity command:", err);
+    statusEl.textContent = `⚠️ Error sending command: ${
+      err instanceof Error ? err.message : "Unknown error"
     }`;
   }
 }
@@ -2040,3 +2134,5 @@ function updateRobotVisualization(linear: number, angular: number) {
 }
 // Вызовите эту функцию после инициализации остальных компонентов
 initGamepadControl();
+
+
