@@ -31,44 +31,60 @@ let currentAngularSpeed = 0.0; // Represents the desired change in orientation o
 let targetDirection = 0.0; // Current target direction in radians
 
 function toggleHelp() {
-  const overlay = document.getElementById('helpOverlay');
+  const overlay = document.getElementById("helpOverlay");
   if (overlay) {
-    overlay.style.display = overlay.style.display === 'none' ? 'flex' : 'none';
+    overlay.style.display = overlay.style.display === "none" ? "flex" : "none";
   }
 }
 
-document.addEventListener('keydown', handleKeyDown);
+document.addEventListener("keydown", handleKeyDown);
 
 function handleKeyDown(event: KeyboardEvent) {
   let speedChanged = false;
   let directionChanged = false;
 
   switch (event.key) {
-    case 'ArrowUp':
+    case "ArrowUp":
       event.preventDefault(); // Prevent page scrolling
-      currentLinearSpeed = Math.min(MAX_LINEAR_SPEED, currentLinearSpeed + SPEED_STEP);
+      currentLinearSpeed = Math.min(
+        MAX_LINEAR_SPEED,
+        currentLinearSpeed + SPEED_STEP
+      );
       speedChanged = true;
       console.log(`Speed increased to: ${currentLinearSpeed.toFixed(2)}`); // Optional: Log for debugging
       break;
-    case 'ArrowDown':
+    case "ArrowDown":
       event.preventDefault(); // Prevent page scrolling
-      currentLinearSpeed = Math.max(-MAX_LINEAR_SPEED, currentLinearSpeed - SPEED_STEP); // Allow reverse
+      currentLinearSpeed = Math.max(
+        -MAX_LINEAR_SPEED,
+        currentLinearSpeed - SPEED_STEP
+      ); // Allow reverse
       speedChanged = true;
       console.log(`Speed decreased to: ${currentLinearSpeed.toFixed(2)}`); // Optional: Log for debugging
       break;
-    case 'ArrowLeft':
+    case "ArrowLeft":
       event.preventDefault();
       targetDirection += ROTATION_STEP;
       directionChanged = true;
-      console.log(`Direction turned left to: ${(targetDirection * 180 / Math.PI).toFixed(1)}°`); // Optional: Log for debugging
+      console.log(
+        `Direction turned left to: ${(
+          (targetDirection * 180) /
+          Math.PI
+        ).toFixed(1)}°`
+      ); // Optional: Log for debugging
       break;
-    case 'ArrowRight':
+    case "ArrowRight":
       event.preventDefault();
       targetDirection -= ROTATION_STEP; // Negative because right turn is negative rotation
       directionChanged = true;
-      console.log(`Direction turned right to: ${(targetDirection * 180 / Math.PI).toFixed(1)}°`); // Optional: Log for debugging
+      console.log(
+        `Direction turned right to: ${(
+          (targetDirection * 180) /
+          Math.PI
+        ).toFixed(1)}°`
+      ); // Optional: Log for debugging
       break;
-    case ' ':
+    case " ":
       event.preventDefault();
       currentLinearSpeed = 0.0;
       currentAngularSpeed = 0.0; // Stop rotation as well
@@ -76,9 +92,9 @@ function handleKeyDown(event: KeyboardEvent) {
       directionChanged = true; // Technically stops changing direction too
       console.log(`Full stop requested.`); // Optional: Log for debugging
       break;
-    case 'Escape':
-        toggleHelp(); // Close help if open
-        break;
+    case "Escape":
+      toggleHelp(); // Close help if open
+      break;
     default:
       // Ignore other keys
       break;
@@ -86,30 +102,33 @@ function handleKeyDown(event: KeyboardEvent) {
 
   // If speed or direction changed, send the updated command
   if (speedChanged || directionChanged) {
-     // Calculate angular speed based on target direction vs current robot theta
-     // This is a simplified approach - you might want a more sophisticated controller
-     // For now, let's assume the angular speed is proportional to the difference between
-     // the target direction and the current robot orientation (robotPosition.theta)
-     // and the desired change in speed.
-     // A simple proportional controller:
-     const directionError = targetDirection - robotPosition.theta;
-     // Use a small proportional gain (adjust as needed)
-     const Kp = 1.0;
-     // The angular speed command tries to correct the orientation error
-     // and also accounts for the desired linear speed if turning.
-     // For simplicity, if linear speed is non-zero and direction changed, apply angular correction.
-     if (directionChanged && currentLinearSpeed !== 0) {
-         currentAngularSpeed = Kp * directionError;
-         // Optionally limit angular speed
-         currentAngularSpeed = Math.max(-MAX_ANGULAR_SPEED, Math.min(MAX_ANGULAR_SPEED, currentAngularSpeed));
-     } else if (speedChanged && !directionChanged) {
-         // If only speed changed and direction is the same, angular speed remains based on previous error
-         // or we could set it to 0 if no turning is intended, depending on desired behavior.
-         // For now, let's assume no intentional turn means keep angular speed as calculated.
-         // If you want to stop turning when only speed changes, uncomment the line below:
-         // if (Math.abs(currentAngularSpeed) < 0.01) currentAngularSpeed = 0; // Small threshold to stop
-     }
-     // If both changed, the new angular speed based on error is already calculated above.
+    // Calculate angular speed based on target direction vs current robot theta
+    // This is a simplified approach - you might want a more sophisticated controller
+    // For now, let's assume the angular speed is proportional to the difference between
+    // the target direction and the current robot orientation (robotPosition.theta)
+    // and the desired change in speed.
+    // A simple proportional controller:
+    const directionError = targetDirection - robotPosition.theta;
+    // Use a small proportional gain (adjust as needed)
+    const Kp = 1.0;
+    // The angular speed command tries to correct the orientation error
+    // and also accounts for the desired linear speed if turning.
+    // For simplicity, if linear speed is non-zero and direction changed, apply angular correction.
+    if (directionChanged && currentLinearSpeed !== 0) {
+      currentAngularSpeed = Kp * directionError;
+      // Optionally limit angular speed
+      currentAngularSpeed = Math.max(
+        -MAX_ANGULAR_SPEED,
+        Math.min(MAX_ANGULAR_SPEED, currentAngularSpeed)
+      );
+    } else if (speedChanged && !directionChanged) {
+      // If only speed changed and direction is the same, angular speed remains based on previous error
+      // or we could set it to 0 if no turning is intended, depending on desired behavior.
+      // For now, let's assume no intentional turn means keep angular speed as calculated.
+      // If you want to stop turning when only speed changes, uncomment the line below:
+      // if (Math.abs(currentAngularSpeed) < 0.01) currentAngularSpeed = 0; // Small threshold to stop
+    }
+    // If both changed, the new angular speed based on error is already calculated above.
 
     pubTwist(currentLinearSpeed, currentAngularSpeed);
   }
@@ -544,14 +563,6 @@ const pathSchema = {
   },
 } as const;
 
-// SSE источники
-let cameraEventSource: EventSource | null = null;
-let mapEventSource: EventSource | null = null;
-let lidarEventSource: EventSource | null = null;
-let odometryEventSource: EventSource | null = null;
-let tfEventSource: EventSource | null = null;
-let planEventSource: EventSource | null = null;
-
 // Текущая карта для отрисовки лидара
 let currentMap: OccupancyGrid | null = null;
 
@@ -605,7 +616,7 @@ async function fetchRobots() {
       const robotName = robotSelect.value;
       if (robotName) {
         statusEl.textContent = `📡 Подключение к ${robotName}...`;
-        setupRobotFeeds(robotName);
+        setupUnifiedFeed(robotName);
       } else {
         cleanupRobotFeeds();
         statusEl.textContent = "Выберите робота";
@@ -614,7 +625,7 @@ async function fetchRobots() {
 
     // Автоматическая загрузка при наличии выбора
     if (robotSelect.value) {
-      setupRobotFeeds(robotSelect.value);
+      setupUnifiedFeed(robotSelect.value);
     }
   } catch (err) {
     console.error("[REST] Ошибка получения списка роботов:", err);
@@ -624,49 +635,71 @@ async function fetchRobots() {
   }
 }
 
-function setupRobotFeeds(robotName: string) {
-  cleanupRobotFeeds();
-  startPlanFeed(robotName);
-  startCameraFeed(robotName);
-  startMapFeed(robotName);
-  startLidarFeed(robotName);
-  startOdometryFeed(robotName);
-  startTfFeed(robotName);
+let robotEventSource: EventSource | null = null;
+
+function setupUnifiedFeed(robotName: string) {
+  cleanupRobotFeeds(); // закрываем старые
+
+  const keyExpr = `robots/${robotName}/**`;
+  const url = `${ZENOH_REST_BASE}/${keyExpr}`;
+
+  robotEventSource = new EventSource(url);
+
+  robotEventSource.addEventListener("open", () => {
+    console.log(`[SSE] Unified feed started for ${robotName}`);
+    statusEl.textContent = `📡 Получение данных с ${robotName}...`;
+  });
+
+  robotEventSource.addEventListener("error", (err) => {
+    console.error("[SSE Unified] Ошибка:", err);
+    statusEl.textContent = "⚠️ Ошибка SSE";
+    if (robotEventSource?.readyState === EventSource.CLOSED) {
+      robotEventSource = null;
+    }
+  });
+
+  robotEventSource.addEventListener("PUT", handleRobot);
+}
+
+function handleRobot(event: MessageEvent) {
+  try {
+    const sample = JSON.parse(event.data) as { key: string; value: string };
+
+    // Логируем (опционально)
+    // console.log("[SSE] Received:", sample.key);
+
+    if (
+      sample.key.endsWith("/robot_cam")
+    ) {
+      handleCameraEvent(sample);
+    } else if (sample.key.endsWith("/map")) {
+      handleMapEvent(sample);
+    } else if (sample.key.endsWith("/scan")) {
+      handleLidarEvent(sample);
+    } else if (
+      //sample.key.includes("/odom") ||
+      sample.key.endsWith("/diff_drive_base_controller/odom")
+    ) {
+      handleOdometryEvent(sample);
+    } else if (sample.key.endsWith("/tf")) {
+      handleTfEvent(sample);
+    } else if (sample.key.endsWith("/plan")) {
+      handlePlanEvent(sample);
+    } else {
+      // console.debug("Unknown topic:", sample.key);
+    }
+  } catch (err) {
+    console.error("[SSE Unified] Parse error:", err);
+  }
 }
 
 function cleanupRobotFeeds() {
   // Закрываем все EventSource
-  if (cameraEventSource) {
-    cameraEventSource.removeEventListener("PUT", handleCameraEvent);
-    cameraEventSource.close();
-    cameraEventSource = null;
+  if (robotEventSource) {
+    robotEventSource.removeEventListener("PUT", handleRobot);
+    robotEventSource.close();
+    robotEventSource = null;
   }
-  if (mapEventSource) {
-    mapEventSource.removeEventListener("PUT", handleMapEvent);
-    mapEventSource.close();
-    mapEventSource = null;
-  }
-  if (lidarEventSource) {
-    lidarEventSource.removeEventListener("PUT", handleLidarEvent);
-    lidarEventSource.close();
-    lidarEventSource = null;
-  }
-  if (odometryEventSource) {
-    odometryEventSource.removeEventListener("PUT", handleOdometryEvent);
-    odometryEventSource.close();
-    odometryEventSource = null;
-  }
-  if (tfEventSource) {
-    tfEventSource.removeEventListener("PUT", handleTfEvent);
-    tfEventSource.close();
-    tfEventSource = null;
-  }
-  if (planEventSource) {
-    planEventSource.removeEventListener("PUT", handlePlanEvent);
-    planEventSource.close();
-    planEventSource = null;
-  }
-
   // Очищаем лидарный холст при смене робота
   if (lidarCtx) {
     lidarCtx.clearRect(0, 0, lidarCanvas.width, lidarCanvas.height);
@@ -677,9 +710,8 @@ function cleanupRobotFeeds() {
 }
 
 // Обработчики событий
-function handleCameraEvent(event: MessageEvent) {
+function handleCameraEvent(sample: { key: string; value: string }) {
   try {
-    const sample = JSON.parse(event.data) as { value: string };
     if (!sample.value) return;
 
     // Декодируем base64
@@ -703,9 +735,8 @@ function handleCameraEvent(event: MessageEvent) {
   }
 }
 
-function handleMapEvent(event: MessageEvent) {
+function handleMapEvent(sample: { key: string; value: string }) {
   try {
-    const sample = JSON.parse(event.data) as { value: string };
     if (!sample.value) return;
 
     // Декодируем base64
@@ -734,9 +765,8 @@ function handleMapEvent(event: MessageEvent) {
   }
 }
 
-function handleLidarEvent(event: MessageEvent) {
+function handleLidarEvent(sample: { key: string; value: string }) {
   try {
-    const sample = JSON.parse(event.data) as { value: string };
     if (!sample.value || !currentMap) return;
 
     // Декодируем base64
@@ -758,9 +788,8 @@ function handleLidarEvent(event: MessageEvent) {
   }
 }
 
-function handleOdometryEvent(event: MessageEvent) {
+function handleOdometryEvent(sample: { key: string; value: string }) {
   try {
-    const sample = JSON.parse(event.data) as { value: string };
     if (!sample.value) return;
 
     // Декодируем base64
@@ -802,9 +831,8 @@ function handleOdometryEvent(event: MessageEvent) {
   }
 }
 
-function handleTfEvent(event: MessageEvent) {
+function handleTfEvent(sample: { key: string; value: string }) {
   try {
-    const sample = JSON.parse(event.data) as { value: string };
     if (!sample.value) return;
 
     // Декодируем base64
@@ -839,9 +867,8 @@ function handleTfEvent(event: MessageEvent) {
   }
 }
 
-function handlePlanEvent(event: MessageEvent) {
+function handlePlanEvent(sample: { key: string; value: string }) {
   try {
-    const sample = JSON.parse(event.data) as { value: string };
     if (!sample.value) return;
 
     // Декодируем base64
@@ -897,163 +924,6 @@ function transformOdomToMap(odomX: number, odomY: number, odomTheta: number) {
   const mapTheta = odomTheta + odomToMapTheta;
 
   return { x: mapX, y: mapY, theta: mapTheta };
-}
-
-function startCameraFeed(robotName: string) {
-  const key = `robots/${robotName}/robot_cam`;
-  const url = `${ZENOH_REST_BASE}/${key}`;
-
-  // Проверка поддержки EventSource
-  if (typeof EventSource === "undefined") {
-    statusEl.textContent =
-      "⚠️ Браузер не поддерживает SSE. Используйте polling.";
-    return;
-  }
-
-  cameraEventSource = new EventSource(url);
-
-  cameraEventSource.addEventListener("open", () => {
-    console.log("[SSE] Подключено к камере:", key);
-    statusEl.textContent = `🎥 Получение видео...`;
-  });
-
-  cameraEventSource.addEventListener("error", (err) => {
-    console.error("[SSE Camera] Ошибка:", err);
-    statusEl.textContent = "⚠️ Ошибка SSE камеры";
-    cameraEventSource?.close();
-    cameraEventSource = null;
-  });
-
-  cameraEventSource.addEventListener("PUT", handleCameraEvent);
-}
-
-function startMapFeed(robotName: string) {
-  const key = `robots/${robotName}/map`;
-  const url = `${ZENOH_REST_BASE}/${key}`;
-
-  // Проверка поддержки EventSource
-  if (typeof EventSource === "undefined") {
-    console.warn(
-      "EventSource не поддерживается. Карта не будет обновляться автоматически."
-    );
-    return;
-  }
-
-  mapEventSource = new EventSource(url);
-
-  mapEventSource.addEventListener("open", () => {
-    console.log("[SSE] Подключено к карте:", key);
-  });
-
-  mapEventSource.addEventListener("error", (err) => {
-    console.error("[SSE Map] Ошибка:", err);
-    mapEventSource?.close();
-    mapEventSource = null;
-  });
-
-  mapEventSource.addEventListener("PUT", handleMapEvent);
-}
-
-function startLidarFeed(robotName: string) {
-  const key = `robots/${robotName}/scan`;
-  const url = `${ZENOH_REST_BASE}/${key}`;
-
-  // Проверка поддержки EventSource
-  if (typeof EventSource === "undefined") {
-    console.warn("EventSource не поддерживается. Лидар не будет отображаться.");
-    return;
-  }
-
-  lidarEventSource = new EventSource(url);
-
-  lidarEventSource.addEventListener("open", () => {
-    console.log("[SSE] Подключено к лидару:", key);
-  });
-
-  lidarEventSource.addEventListener("error", (err) => {
-    console.error("[SSE Lidar] Ошибка:", err);
-    lidarEventSource?.close();
-    lidarEventSource = null;
-  });
-
-  lidarEventSource.addEventListener("PUT", handleLidarEvent);
-}
-
-function startOdometryFeed(robotName: string) {
-  const key = `robots/${robotName}/diff_drive_base_controller/odom`;
-  const url = `${ZENOH_REST_BASE}/${key}`;
-
-  // Проверка поддержки EventSource
-  if (typeof EventSource === "undefined") {
-    console.warn(
-      "EventSource не поддерживается. Позиция робота не будет отображаться."
-    );
-    return;
-  }
-
-  odometryEventSource = new EventSource(url);
-
-  odometryEventSource.addEventListener("open", () => {
-    console.log("[SSE] Подключено к одометрии:", key);
-  });
-
-  odometryEventSource.addEventListener("error", (err) => {
-    console.error("[SSE Odometry] Ошибка:", err);
-    odometryEventSource?.close();
-    odometryEventSource = null;
-  });
-
-  odometryEventSource.addEventListener("PUT", handleOdometryEvent);
-}
-
-function startTfFeed(robotName: string) {
-  const key = `robots/${robotName}/tf`;
-  const url = `${ZENOH_REST_BASE}/${key}`;
-
-  // Проверка поддержки EventSource
-  if (typeof EventSource === "undefined") {
-    console.warn("EventSource не поддерживается. TF не будет обрабатываться.");
-    return;
-  }
-
-  tfEventSource = new EventSource(url);
-
-  tfEventSource.addEventListener("open", () => {
-    console.log("[SSE] Подключено к TF:", key);
-  });
-
-  tfEventSource.addEventListener("error", (err) => {
-    console.error("[SSE TF] Ошибка:", err);
-    tfEventSource?.close();
-    tfEventSource = null;
-  });
-
-  tfEventSource.addEventListener("PUT", handleTfEvent);
-}
-
-function startPlanFeed(robotName: string) {
-  const key = `robots/${robotName}/plan`;
-  const url = `${ZENOH_REST_BASE}/${key}`;
-
-  // Проверка поддержки EventSource
-  if (typeof EventSource === "undefined") {
-    console.warn("EventSource не поддерживается. План не будет отображаться.");
-    return;
-  }
-
-  planEventSource = new EventSource(url);
-
-  planEventSource.addEventListener("open", () => {
-    console.log("[SSE] Подключено к плану:", key);
-  });
-
-  planEventSource.addEventListener("error", (err) => {
-    console.error("[SSE Plan] Ошибка:", err);
-    planEventSource?.close();
-    planEventSource = null;
-  });
-
-  planEventSource.addEventListener("PUT", handlePlanEvent);
 }
 
 function renderImage(msg: any) {
@@ -1785,7 +1655,8 @@ function renderLidar(scan: any) {
 }
 
 // Добавьте эту функцию в ваш main.ts
-async function pubTwist() { // No parameters needed now
+async function pubTwist() {
+  // No parameters needed now
   const robotName = robotSelect.value;
   if (!robotName) {
     console.warn("Not selected robot for sending command");
@@ -1797,7 +1668,11 @@ async function pubTwist() { // No parameters needed now
       linear: { x: currentLinearSpeed, y: 0, z: 0 },
       angular: { x: 0, y: 0, z: currentAngularSpeed },
     };
-    console.log(`Sending Twist: linear=${twist.linear.x.toFixed(2)}, angular=${twist.angular.z.toFixed(2)}`); // Log command
+    console.log(
+      `Sending Twist: linear=${twist.linear.x.toFixed(
+        2
+      )}, angular=${twist.angular.z.toFixed(2)}`
+    ); // Log command
 
     const cdrBytes: Uint8Array = twistWriter.writeMessage(twist);
     const key = `robots/${robotName}/cmd_vel`;
@@ -2134,5 +2009,3 @@ function updateRobotVisualization(linear: number, angular: number) {
 }
 // Вызовите эту функцию после инициализации остальных компонентов
 initGamepadControl();
-
-
