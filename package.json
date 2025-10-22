@@ -1,16 +1,31 @@
 {
   "name": "zenoh-camera-viewer",
   "version": "1.0.0",
-  "description": "",
+  "description": "Web interface for remote robot control via Zenoh protocol with real-time camera, map, and lidar visualization",
+  "type": "module",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
     "dev": "vite",
-    "build": "tsc && vite build"
+    "build": "tsc && vite build",
+    "preview": "vite preview"
   },
-  "keywords": [],
-  "author": "",
+  "keywords": [
+    "zenoh",
+    "robotics",
+    "ros2",
+    "remote-control",
+    "web-interface",
+    "visualization",
+    "lidar",
+    "camera",
+    "mapping"
+  ],
+  "author": "krikz",
   "license": "ISC",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/krikz/zenoh-camera-viewer.git"
+  },
   "dependencies": {
     "@eclipse-zenoh/zenoh-ts": "^1.5.1",
     "@lichtblick/omgidl-parser": "^1.0.0",
