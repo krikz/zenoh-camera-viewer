@@ -23,8 +23,21 @@
 
     /* Additional */
     "esModuleInterop": true,
-    "allowSyntheticDefaultImports": true
+    "allowSyntheticDefaultImports": true,
+    
+    /* Path mapping */
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/*"],
+      "@config/*": ["src/config/*"],
+      "@types": ["src/types"],
+      "@schemas": ["src/schemas"],
+      "@services/*": ["src/services/*"],
+      "@renderers/*": ["src/renderers/*"],
+      "@utils": ["src/utils"],
+      "@ui/*": ["src/ui/*"]
+    }
   },
-  "include": ["*.ts", "*.tsx"],
+  "include": ["src/**/*", "*.ts", "*.tsx"],
   "exclude": ["node_modules", "dist"]
 }

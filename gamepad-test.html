@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Gamepad Tester - Taranis X7</title>
+    <meta charset="utf-8">
+    <style>
+        body { 
+            font-family: 'Segoe UI', Arial, sans-serif; 
+            padding: 20px; 
+            background: #1e1e1e; 
+            color: #fff; 
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        h1 { color: #4CAF50; }
+        .status { 
+            font-size: 24px; 
+            margin: 20px 0; 
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+        }
+        .connected { 
+            background: #4CAF50; 
+            color: white;
+        }
+        .disconnected { 
+            background: #f44336; 
+            color: white;
+        }
+        .gamepad-info { 
+            background: #2d2d2d; 
+            padding: 20px; 
+            border-radius: 8px; 
+            margin: 20px 0; 
+        }
+        .axis { 
+            margin: 15px 0; 
+            padding: 10px;
+            background: #333;
+            border-radius: 5px;
+        }
+        .axis-bar { 
+            width: 100%; 
+            height: 40px; 
+            background: #444; 
+            position: relative; 
+            border-radius: 5px; 
+            margin-top: 5px;
+        }
+        .axis-value { 
+            position: absolute; 
+            height: 100%; 
+            background: #4CAF50; 
+            border-radius: 5px; 
+            transition: width 0.05s;
+        }
+        .axis-center { 
+            position: absolute; 
+            left: 50%; 
+            width: 3px; 
+            height: 100%; 
+            background: rgba(255,255,255,0.3);
+        }
+        .axis-label {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 5px;
+        }
+        .axis-number {
+            font-size: 18px;
+            font-weight: bold;
+            color: #4CAF50;
+        }
+        .axis-raw {
+            font-family: 'Courier New', monospace;
+            color: #888;
+        }
+        .buttons-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(60px, 1fr));
+            gap: 10px;
+            margin-top: 10px;
+        }
+        .button { 
+            width: 100%;
+            height: 60px; 
+            border-radius: 8px; 
+            background: #444; 
+            text-align: center; 
+            line-height: 60px;
+            font-size: 16px;
+            font-weight: bold;
+            transition: all 0.1s;
+        }
+        .button.pressed { 
+            background: #4CAF50; 
+            transform: scale(0.95);
+            box-shadow: 0 0 20px #4CAF50;
+        }
+        .info { 
+            background: #2a52be; 
+            padding: 15px; 
+            border-radius: 8px; 
+            margin: 20px 0;
+            border-left: 5px solid #4CAF50;
+        }
+        .warning {
+            background: #ff9800;
+            color: #000;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 20px 0;
+            font-weight: bold;
+        }
+        .config-recommendation {
+            background: #333;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 20px 0;
+            border: 2px solid #4CAF50;
+        }
+        .config-recommendation code {
+            background: #1e1e1e;
+            padding: 2px 6px;
+            border-radius: 3px;
+            color: #4CAF50;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 15px 0;
+        }
+        th, td {
+            padding: 10px;
+            text-align: left;
+            border-bottom: 1px solid #444;
+        }
+        th {
+            background: #333;
+            color: #4CAF50;
+        }
+        .highlight {
+            background: #4CAF50;
+            color: white;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <h1>🎮 Тестирование геймпада Taranis X7</h1>
+    
+    <div id="status" class="status disconnected">
+        ❌ Геймпад не подключен
+    </div>
+    
+    <div class="info">
+        <strong>📋 Инструкция для Taranis X7:</strong><br>
+        1. Подключите Taranis X7 к компьютеру через USB<br>
+        2. На передатчике: <strong>MENU → SETUP → USB Mode → USB Joystick (HID)</strong><br>
+        3. Нажмите любую кнопку или подвигайте стик на передатчике<br>
+        4. Данные появятся ниже ⬇️
+    </div>
+    
+    <div id="gamepadInfo" class="gamepad-info" style="display:none;">
+        <h2>📊 Информация о геймпаде</h2>
+        <div id="gamepadId" style="font-size: 14px; color: #888; margin-bottom: 20px;"></div>
+        
+        <h3>🕹️ Оси (Sticks)</h3>
+        <div id="axes"></div>
+        
+        <h3>🔘 Кнопки (Switches)</h3>
+        <div id="buttons" class="buttons-grid"></div>
+        
+        <div id="recommendation" class="config-recommendation" style="display:none;">
+            <h3>⚙️ Рекомендуемая конфигурация для вашего приложения</h3>
+            <div id="configText"></div>
+        </div>
+    </div>
+
+    <script>
+        let animationId = null;
+        let detectedAxes = new Set();
+        let lastValues = {};
+
+        function updateGamepadStatus() {
+            const gamepads = navigator.getGamepads();
+            let gamepad = null;
+
+            for (let i = 0; i < gamepads.length; i++) {
+                if (gamepads[i]) {
+                    gamepad = gamepads[i];
+                    break;
+                }
+            }
+
+            const statusEl = document.getElementById('status');
+            const infoEl = document.getElementById('gamepadInfo');
+
+            if (!gamepad) {
+                statusEl.className = 'status disconnected';
+                statusEl.textContent = '❌ Геймпад не подключен';
+                infoEl.style.display = 'none';
+                animationId = requestAnimationFrame(updateGamepadStatus);
+                return;
+            }
+
+            statusEl.className = 'status connected';
+            statusEl.textContent = '✅ Геймпад подключен: ' + gamepad.id;
+            infoEl.style.display = 'block';
+
+            // Gamepad ID
+            document.getElementById('gamepadId').innerHTML = 
+                '<strong>ID:</strong> ' + gamepad.id + '<br>' +
+                '<strong>Количество осей:</strong> ' + gamepad.axes.length + '<br>' +
+                '<strong>Количество кнопок:</strong> ' + gamepad.buttons.length;
+
+            // Axes
+            let axesHtml = '';
+            for (let i = 0; i < gamepad.axes.length; i++) {
+                const value = gamepad.axes[i];
+                const percent = ((value + 1) / 2) * 100;
+                const isActive = Math.abs(value) > 0.1;
+                const color = isActive ? '#4CAF50' : '#666';
+                
+                if (isActive) {
+                    detectedAxes.add(i);
+                }
+
+                // Определяем название оси
+                let axisName = 'Axis ' + i;
+                if (i === 0) axisName = 'Axis 0 (обычно Roll/Aileron)';
+                if (i === 1) axisName = 'Axis 1 (обычно Pitch/Elevator)';
+                if (i === 2) axisName = 'Axis 2 (обычно Throttle)';
+                if (i === 3) axisName = 'Axis 3 (обычно Yaw/Rudder)';
+                
+                axesHtml += '<div class="axis">';
+                axesHtml += '<div class="axis-label">';
+                axesHtml += '<span><span class="axis-number">' + axisName + '</span></span>';
+                axesHtml += '<span class="axis-raw">' + value.toFixed(4) + '</span>';
+                axesHtml += '</div>';
+                axesHtml += '<div class="axis-bar">';
+                axesHtml += '<div class="axis-center"></div>';
+                axesHtml += '<div class="axis-value" style="width:' + percent + '%; background:' + color + '"></div>';
+                axesHtml += '</div>';
+                axesHtml += '</div>';
+
+                lastValues[i] = value;
+            }
+            document.getElementById('axes').innerHTML = axesHtml;
+
+            // Buttons
+            let buttonsHtml = '';
+            for (let i = 0; i < gamepad.buttons.length; i++) {
+                const pressed = gamepad.buttons[i].pressed;
+                const className = pressed ? 'button pressed' : 'button';
+                buttonsHtml += '<div class="' + className + '">BTN ' + i + '</div>';
+            }
+            document.getElementById('buttons').innerHTML = buttonsHtml;
+
+            // Рекомендации по конфигурации
+            if (detectedAxes.size >= 2) {
+                const recommendEl = document.getElementById('recommendation');
+                recommendEl.style.display = 'block';
+                
+                let configHtml = '<p>На основе обнаруженных активных осей рекомендуется:</p>';
+                configHtml += '<table>';
+                configHtml += '<tr><th>Параметр</th><th>Текущее значение</th><th>Рекомендация для Taranis</th></tr>';
+                
+                // Pitch (вперед/назад)
+                const pitchAxis = detectedAxes.has(1) ? 1 : Array.from(detectedAxes)[0];
+                configHtml += '<tr>';
+                configHtml += '<td><code>PITCH_AXIS</code><br>(вперед/назад)</td>';
+                configHtml += '<td class="highlight">Axis 1</td>';
+                configHtml += '<td>Используйте <strong>Axis ' + pitchAxis + '</strong>';
+                if (pitchAxis === 1) configHtml += ' ✅';
+                configHtml += '</td>';
+                configHtml += '</tr>';
+                
+                // Yaw (поворот)
+                const yawAxis = detectedAxes.has(3) ? 3 : (detectedAxes.has(0) ? 0 : Array.from(detectedAxes)[1] || 3);
+                configHtml += '<tr>';
+                configHtml += '<td><code>YAW_AXIS</code><br>(поворот)</td>';
+                configHtml += '<td class="highlight">Axis 3</td>';
+                configHtml += '<td>Используйте <strong>Axis ' + yawAxis + '</strong>';
+                if (yawAxis === 3) configHtml += ' ✅';
+                configHtml += '</td>';
+                configHtml += '</tr>';
+                
+                configHtml += '</table>';
+                
+                if (pitchAxis !== 1 || yawAxis !== 3) {
+                    configHtml += '<div class="warning">⚠️ <strong>ТРЕБУЕТСЯ ИЗМЕНЕНИЕ КОНФИГУРАЦИИ!</strong></div>';
+                    configHtml += '<p>Откройте <code>src/config/index.ts</code> и измените:</p>';
+                    configHtml += '<pre style="background:#1e1e1e; padding:15px; border-radius:5px; overflow-x:auto;"><code>';
+                    configHtml += 'export const GAMEPAD_CONFIG = {\n';
+                    configHtml += '  POLL_INTERVAL: 50,\n';
+                    configHtml += '  DEADZONE: 0.1,\n';
+                    configHtml += '  MAX_LINEAR_SPEED: 0.5,\n';
+                    configHtml += '  MAX_ANGULAR_SPEED: 1.0,\n';
+                    configHtml += '  <strong style="color:#f44336">PITCH_AXIS: ' + pitchAxis + ',  // ← ИЗМЕНИТЕ ЭТО</strong>\n';
+                    configHtml += '  <strong style="color:#f44336">YAW_AXIS: ' + yawAxis + ',    // ← ИЗМЕНИТЕ ЭТО</strong>\n';
+                    configHtml += '};</code></pre>';
+                } else {
+                    configHtml += '<div style="background:#4CAF50; color:white; padding:15px; border-radius:8px; margin-top:15px;">';
+                    configHtml += '✅ <strong>Отлично!</strong> Ваш Taranis X7 использует стандартные оси. Конфигурация не требует изменений!';
+                    configHtml += '</div>';
+                }
+                
+                document.getElementById('configText').innerHTML = configHtml;
+            }
+
+            animationId = requestAnimationFrame(updateGamepadStatus);
+        }
+
+        window.addEventListener('gamepadconnected', (e) => {
+            console.log('✅ Gamepad connected:', e.gamepad);
+            console.log('ID:', e.gamepad.id);
+            console.log('Axes:', e.gamepad.axes.length);
+            console.log('Buttons:', e.gamepad.buttons.length);
+        });
+
+        window.addEventListener('gamepaddisconnected', (e) => {
+            console.log('❌ Gamepad disconnected:', e.gamepad);
+            detectedAxes.clear();
+        });
+
+        // Start polling
+        console.log('🎮 Gamepad Tester запущен. Ожидание подключения Taranis X7...');
+        updateGamepadStatus();
+    </script>
+</body>
+</html>

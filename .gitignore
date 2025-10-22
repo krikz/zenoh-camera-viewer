@@ -10,6 +10,9 @@ dist/
 build/
 *.local
 
+# Legacy files (old architecture)
+src/legacy/
+
 # Environment variables
 .env
 .env.local
