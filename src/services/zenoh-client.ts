@@ -160,13 +160,20 @@ export class ZenohClient {
     this.robotFeed = new EventSource(url);
 
     this.robotFeed.addEventListener('open', () => {
-      logger.info(LOG_CONFIG.PREFIXES.ZENOH, `Подключено к роботу ${robotName} (unified feed)`);
+      logger.info(LOG_CONFIG.PREFIXES.ZENOH, `✅ SSE подключен к роботу ${robotName}`);
+      logger.debug(LOG_CONFIG.PREFIXES.ZENOH, `ReadyState: ${this.robotFeed?.readyState}, URL: ${url}`);
     });
 
     this.robotFeed.addEventListener('error', (err) => {
-      logger.error(LOG_CONFIG.PREFIXES.ZENOH, `Ошибка SSE робота ${robotName}:`, err);
+      const state = this.robotFeed?.readyState;
+      const stateStr = state === EventSource.CONNECTING ? 'CONNECTING' : 
+                       state === EventSource.OPEN ? 'OPEN' : 'CLOSED';
       
-      if (this.robotFeed?.readyState === EventSource.CLOSED) {
+      logger.error(LOG_CONFIG.PREFIXES.ZENOH, `❌ Ошибка SSE робота ${robotName} (${stateStr}):`, err);
+      logger.error(LOG_CONFIG.PREFIXES.ZENOH, `URL: ${url}`);
+      
+      if (state === EventSource.CLOSED) {
+        logger.error(LOG_CONFIG.PREFIXES.ZENOH, 'Соединение закрыто сервером');
         this.robotFeed = null;
       }
     });
@@ -174,17 +181,33 @@ export class ZenohClient {
     // Создаём обработчик один раз
     this.unifiedMessageHandler = (event: MessageEvent) => {
       try {
+        logger.debug(LOG_CONFIG.PREFIXES.ZENOH, `📨 SSE event type: ${event.type}`);
+        
         const sample = JSON.parse(event.data) as { key: string; value: string };
         if (sample.key && sample.value) {
+          logger.debug(LOG_CONFIG.PREFIXES.ZENOH, `📦 Получено: ${sample.key}`);
           // Передаём ключ и данные в роутер
           messageHandler(sample.key, sample.value);
+        } else {
+          logger.warn(LOG_CONFIG.PREFIXES.ZENOH, 'Получено сообщение без key или value:', event.data);
         }
       } catch (err) {
         logger.error(LOG_CONFIG.PREFIXES.ZENOH, 'Ошибка парсинга unified сообщения:', err);
+        logger.error(LOG_CONFIG.PREFIXES.ZENOH, 'Raw data:', event.data);
       }
     };
 
     this.robotFeed.addEventListener('PUT', this.unifiedMessageHandler);
+    
+    // Также слушаем DELETE события (могут быть важны)
+    this.robotFeed.addEventListener('DELETE', (event: MessageEvent) => {
+      logger.debug(LOG_CONFIG.PREFIXES.ZENOH, `🗑️ DELETE event: ${event.data}`);
+    });
+    
+    // Слушаем все возможные события для отладки
+    this.robotFeed.addEventListener('message', (event: MessageEvent) => {
+      logger.debug(LOG_CONFIG.PREFIXES.ZENOH, `📬 Generic message event: ${event.data}`);
+    });
   }
 
   /**
