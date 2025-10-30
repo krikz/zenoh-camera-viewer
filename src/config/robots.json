@@ -1,0 +1,32 @@
+{
+  "robots": [
+    {
+      "id": "RBXU100001",
+      "name": "RBXU100001",
+      "description": "RobBox Robot #1",
+      "cameras": [
+        {
+          "id": "rgb_compressed",
+          "name": "RGB Camera (Compressed)",
+          "topic": "/camera/color/image_raw",
+          "encoding": "compressed",
+          "default": true
+        },
+        {
+          "id": "ceiling_compressed",
+          "name": "Ceiling Camera (Compressed)",
+          "topic": "ceiling_camera/image_raw/compressed",
+          "encoding": "compressed"
+        }
+      ],
+      "topics": {
+        "map": "map",
+        "lidar": "scan",
+        "odometry": "rtabmap/odom",
+        "tf": "tf",
+        "plan": "plan",
+        "cmd_vel": "cmd_vel"
+      }
+    }
+  ]
+}

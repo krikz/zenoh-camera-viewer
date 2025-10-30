@@ -3,16 +3,17 @@
  * Zenoh Robot Explorer - современная модульная версия
  */
 
-import { ZenohClient } from './services/zenoh-client';
+import { ZenohClient, robotConfigService } from './services';
 import { MapRenderer, CameraRenderer, LidarRenderer } from './renderers';
 import { CameraController, GamepadController } from './ui';
 import { parseZenohMessage, logger, isValidImage, isValidOccupancyGrid, isValidLaserScan, isValidOdometry, isValidPath, isValidTFMessage, transformOdomToMap } from './utils';
 import { imageSchema, laserScanSchema, occupancyGridSchema, odometrySchema, pathSchema, tfMessageSchema } from './schemas';
 import type { Image, LaserScan, OccupancyGrid, Odometry, Path, TFMessage, RobotPosition, Transform } from './types';
-import { ZENOH_CONFIG, CDR_LIMITS, ROS_TOPICS, LOG_CONFIG } from './config';
+import { CDR_LIMITS, LOG_CONFIG } from './config';
 
 // ==================== DOM Elements ====================
 const robotSelect = document.getElementById('robotSelect') as HTMLSelectElement;
+const cameraSelect = document.getElementById('cameraSelect') as HTMLSelectElement;
 const statusEl = document.getElementById('status') as HTMLElement;
 const mapCanvas = document.getElementById('mapCanvas') as HTMLCanvasElement;
 const lidarCanvas = document.getElementById('lidarCanvas') as HTMLCanvasElement;
@@ -64,6 +65,7 @@ if (gamepadBtn && gamepadOverlay && pitchIndicator && yawIndicator && robotVisua
 
 // ==================== State ====================
 let currentRobotName = '';
+let currentCameraTopic = '';
 let robotPosition: RobotPosition = { x: 0, y: 0, theta: 0 };
 let currentPlan: Array<{ x: number; y: number }> = [];
 let mapToOdom: Transform = {
@@ -184,12 +186,27 @@ function handlePlanMessage(data: string): void {
   }
 }
 
+function handleRosoutMessage(data: string): void {
+  try {
+    // Логи приходят в сыром виде, просто выводим их в консоль
+    // Можно попробовать распарсить как JSON или CDR, пока просто логируем
+    logger.info(LOG_CONFIG.PREFIXES.ZENOH, '📋 [Robot Log]', data.substring(0, 500));
+  } catch (err) {
+    logger.error(LOG_CONFIG.PREFIXES.ZENOH, 'Ошибка обработки rosout:', err);
+  }
+}
+
 // ==================== Robot Management ====================
 
+/**
+ * Загружает список роботов из конфигурации
+ */
 async function loadRobots(): Promise<void> {
   try {
-    statusEl.textContent = '🔍 Поиск роботов...';
-    const robots = await zenohClient.fetchRobots();
+    statusEl.textContent = '🔍 Загрузка роботов...';
+    
+    // Получаем роботов из конфигурации
+    const robots = robotConfigService.getRobots();
 
     robotSelect.innerHTML = '';
     
@@ -200,14 +217,15 @@ async function loadRobots(): Promise<void> {
     }
 
     robotSelect.innerHTML = '<option value="">-- Выберите робота --</option>';
-    robots.forEach((name) => {
+    robots.forEach((robot) => {
       const opt = document.createElement('option');
-      opt.value = name;
-      opt.textContent = name;
+      opt.value = robot.id;
+      opt.textContent = `${robot.name}${robot.description ? ' - ' + robot.description : ''}`;
       robotSelect.appendChild(opt);
     });
 
     statusEl.textContent = `✅ Найдено роботов: ${robots.length}`;
+    logger.info(LOG_CONFIG.PREFIXES.ZENOH, `Загружено роботов из конфигурации: ${robots.length}`);
   } catch (err) {
     logger.error(LOG_CONFIG.PREFIXES.ZENOH, 'Ошибка загрузки роботов:', err);
     robotSelect.innerHTML = '<option>Ошибка загрузки</option>';
@@ -215,7 +233,75 @@ async function loadRobots(): Promise<void> {
   }
 }
 
-function connectToRobot(robotName: string): void {
+/**
+ * Загружает доступные топики камер для выбранного робота из конфигурации
+ */
+async function loadCameraTopics(robotId: string): Promise<void> {
+  try {
+    cameraSelect.disabled = true;
+    cameraSelect.innerHTML = '<option value="">⏳ Загрузка...</option>';
+
+    // Получаем камеры из конфигурации
+    const cameras = robotConfigService.getCamerasForRobot(robotId);
+
+    if (cameras.length === 0) {
+      cameraSelect.innerHTML = '<option value="">❌ Камеры не найдены</option>';
+      logger.warn(LOG_CONFIG.PREFIXES.ZENOH, 'Камеры не найдены для робота', robotId);
+      return;
+    }
+
+    cameraSelect.innerHTML = '<option value="">-- Выберите камеру --</option>';
+    cameras.forEach((camera) => {
+      const opt = document.createElement('option');
+      opt.value = camera.topic;
+      opt.textContent = camera.name;
+      // Если это камера по умолчанию, добавляем пометку
+      if (camera.default) {
+        opt.textContent += ' ⭐';
+      }
+      cameraSelect.appendChild(opt);
+    });
+
+    cameraSelect.disabled = false;
+    
+    // Автоматически выбираем камеру по умолчанию
+    const defaultCamera = robotConfigService.getDefaultCamera(robotId);
+    if (defaultCamera) {
+      cameraSelect.value = defaultCamera.topic;
+      connectToCamera(defaultCamera.topic);
+    }
+    
+    logger.info(LOG_CONFIG.PREFIXES.ZENOH, `Загружено камер: ${cameras.length}`, cameras);
+  } catch (err) {
+    logger.error(LOG_CONFIG.PREFIXES.ZENOH, 'Ошибка загрузки камер:', err);
+    cameraSelect.innerHTML = '<option value="">❌ Ошибка загрузки</option>';
+  }
+}
+
+/**
+ * Подключается к выбранной камере
+ */
+function connectToCamera(topic: string): void {
+  // Отключаемся от предыдущей камеры
+  if (currentCameraTopic && currentRobotName) {
+    zenohClient.unsubscribe(`${currentRobotName}/${currentCameraTopic}`);
+    cameraRenderer.clear();
+  }
+
+  if (!topic) {
+    currentCameraTopic = '';
+    return;
+  }
+
+  currentCameraTopic = topic;
+  
+  // Подписываемся на новую камеру
+  zenohClient.subscribe(currentRobotName, topic, handleCameraMessage);
+  
+  logger.info(LOG_CONFIG.PREFIXES.ZENOH, `Подключено к камере: ${topic}`);
+}
+
+function connectToRobot(robotId: string): void {
   // Отключаемся от предыдущего робота
   if (currentRobotName) {
     zenohClient.unsubscribeRobot(currentRobotName);
@@ -224,25 +310,40 @@ function connectToRobot(robotName: string): void {
     cameraRenderer.clear();
   }
 
-  currentRobotName = robotName;
+  currentRobotName = robotId;
+  currentCameraTopic = '';
+  
+  // Получаем конфигурацию робота
+  const robotConfig = robotConfigService.getRobotById(robotId);
+  if (!robotConfig) {
+    logger.error(LOG_CONFIG.PREFIXES.ZENOH, `Робот ${robotId} не найден в конфигурации`);
+    statusEl.textContent = `❌ Робот не найден`;
+    return;
+  }
   
   // Обновляем gamepad controller с новым роботом
   if (gamepadController) {
-    gamepadController.setRobot(robotName);
+    gamepadController.setRobot(robotId);
   }
   
-  statusEl.textContent = `📡 Подключение к ${robotName}...`;
+  statusEl.textContent = `📡 Подключение к ${robotConfig.name}...`;
 
-  // Подписываемся на все топики
-  zenohClient.subscribe(robotName, ROS_TOPICS.CAMERA, handleCameraMessage);
-  zenohClient.subscribe(robotName, ROS_TOPICS.MAP, handleMapMessage);
-  zenohClient.subscribe(robotName, ROS_TOPICS.LIDAR, handleLidarMessage);
-  zenohClient.subscribe(robotName, ROS_TOPICS.ODOMETRY, handleOdometryMessage);
-  zenohClient.subscribe(robotName, ROS_TOPICS.TF, handleTfMessage);
-  zenohClient.subscribe(robotName, ROS_TOPICS.PLAN, handlePlanMessage);
+  // Подписываемся на топики из конфигурации (кроме камеры - её выбирает пользователь)
+  const topics = robotConfig.topics;
+  zenohClient.subscribe(robotId, topics.map, handleMapMessage);
+  zenohClient.subscribe(robotId, topics.lidar, handleLidarMessage);
+  zenohClient.subscribe(robotId, topics.odometry, handleOdometryMessage);
+  zenohClient.subscribe(robotId, topics.tf, handleTfMessage);
+  zenohClient.subscribe(robotId, topics.plan, handlePlanMessage);
+  
+  // Подписываемся на логи робота для проверки соединения
+  zenohClient.subscribe(robotId, 'rosout', handleRosoutMessage);
 
-  statusEl.textContent = `✅ Подключено к ${robotName}`;
-  logger.info(LOG_CONFIG.PREFIXES.ZENOH, `Подключено к роботу ${robotName}`);
+  statusEl.textContent = `✅ Подключено к ${robotConfig.name}`;
+  logger.info(LOG_CONFIG.PREFIXES.ZENOH, `Подключено к роботу ${robotConfig.name}`, topics);
+  
+  // Загружаем доступные топики камер
+  loadCameraTopics(robotId);
 }
 
 // ==================== Event Listeners ====================
@@ -255,9 +356,17 @@ robotSelect.addEventListener('change', () => {
     if (currentRobotName) {
       zenohClient.unsubscribeRobot(currentRobotName);
       currentRobotName = '';
+      currentCameraTopic = '';
     }
+    cameraSelect.disabled = true;
+    cameraSelect.innerHTML = '<option value="">-- Выберите камеру --</option>';
     statusEl.textContent = 'Выберите робота';
   }
+});
+
+cameraSelect.addEventListener('change', () => {
+  const topic = cameraSelect.value;
+  connectToCamera(topic);
 });
 
 // ==================== Initialization ====================

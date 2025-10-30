@@ -2,8 +2,8 @@
  * Zenoh Client для работы с REST API и SSE
  */
 
-import { ZENOH_CONFIG, CDR_LIMITS, ROS_TOPICS, LOG_CONFIG } from '../config';
-import { logger } from '../utils';
+import { ZENOH_CONFIG, LOG_CONFIG } from '../config';
+import { logger, extractRobotName, buildZenohPath } from '../utils';
 import type { FeedConfig } from '../types';
 
 export type MessageHandler<T> = (message: T) => void;
@@ -44,7 +44,13 @@ class FeedManager<T> {
    * Устанавливает подключение к SSE
    */
   private connect(): void {
-    const url = `${ZENOH_CONFIG.REST_BASE}/robots/${this.config.robotName}/${this.config.topic}`;
+    // Используем новый формат пути с доменом и wildcard
+    // robots/{robot}/{domain}/{topic}/**
+    const url = `${ZENOH_CONFIG.REST_BASE}/${buildZenohPath(
+      this.config.robotName,
+      this.config.topic,
+      ZENOH_CONFIG.ROS_DOMAIN
+    )}`;
 
     logger.debug(LOG_CONFIG.PREFIXES.ZENOH, `Подключение к ${url}`);
 
@@ -143,13 +149,13 @@ export class ZenohClient {
 
       const data: Array<{ key: string }> = await resp.json();
 
-      // Извлекаем уникальные имена роботов
+      // Извлекаем уникальные имена роботов из путей
       const robotsSet = new Set<string>();
       for (const item of data) {
-        const parts = item.key.split('/');
-        if (parts.length > 1 && parts[0] === 'robots') {
-          const robotName = parts[1];
-          if (robotName) robotsSet.add(robotName);
+        // Используем утилиту для парсинга пути
+        const robotName = extractRobotName(item.key);
+        if (robotName) {
+          robotsSet.add(robotName);
         }
       }
 
@@ -157,6 +163,82 @@ export class ZenohClient {
     } catch (err) {
       logger.error(LOG_CONFIG.PREFIXES.ZENOH, 'Ошибка получения списка роботов:', err);
       throw err;
+    }
+  }
+
+  /**
+   * Получает список доступных топиков камер для робота
+   * Ищет топики содержащие: camera, image, rgb, compressed
+   * Исключает camera_info топики
+   */
+  async fetchCameraTopics(robotName: string): Promise<string[]> {
+    try {
+      const url = `${ZENOH_CONFIG.REST_BASE}/robots/${robotName}/${ZENOH_CONFIG.ROS_DOMAIN}/**`;
+      const resp = await fetch(url);
+      
+      if (!resp.ok) {
+        throw new Error(`HTTP ${resp.status}`);
+      }
+
+      const data: Array<{ key: string }> = await resp.json();
+      
+      // Паттерны для поиска топиков с изображениями (НЕ camera_info)
+      const imagePatterns = [
+        /\/image/i,
+        /\/compressed/i,
+        /\/depth/i,
+        /\/color/i,
+      ];
+      
+      // Исключаем топики, которые НЕ содержат изображения
+      const excludePatterns = [
+        /camera_info/i,
+        /\/imu\//i,
+        /detection/i,
+      ];
+
+      // Извлекаем уникальные топики камер
+      const cameraTopics = new Set<string>();
+      
+      for (const item of data) {
+        const key = item.key;
+        
+        // Проверяем, что это топик с изображением
+        const hasImage = imagePatterns.some(pattern => pattern.test(key));
+        const isExcluded = excludePatterns.some(pattern => pattern.test(key));
+        
+        if (hasImage && !isExcluded) {
+          // Извлекаем путь топика без префикса robots/{name}/{domain}/ и суффикса /{messageType}/{hashStatus}
+          // Пример: robots/RBXU100001/0/camera/rgb/image_raw/compressed/sensor_msgs::msg::dds_::CompressedImage_/TypeHashNotSupported
+          // Нужно извлечь: camera/rgb/image_raw/compressed
+          
+          // Разделяем по слешам и ищем, где начинается messageType (содержит ::)
+          const parts = key.split('/');
+          
+          // Первые 3 части: robots, robotName, domain
+          // Затем идет путь топика до messageType (который содержит ::)
+          const topicParts: string[] = [];
+          for (let i = 3; i < parts.length; i++) {
+            if (parts[i].includes('::') || parts[i] === 'TypeHashNotSupported') {
+              break; // Дошли до messageType или hashStatus
+            }
+            topicParts.push(parts[i]);
+          }
+          
+          if (topicParts.length > 0) {
+            const topicPath = topicParts.join('/');
+            cameraTopics.add(topicPath);
+          }
+        }
+      }
+
+      const topics = Array.from(cameraTopics).sort();
+      logger.info(LOG_CONFIG.PREFIXES.ZENOH, `Найдено топиков камер: ${topics.length}`, topics);
+      return topics;
+      return topics;
+    } catch (err) {
+      logger.error(LOG_CONFIG.PREFIXES.ZENOH, 'Ошибка получения топиков камер:', err);
+      return [];
     }
   }
 

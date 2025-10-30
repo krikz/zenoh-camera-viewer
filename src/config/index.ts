@@ -14,6 +14,12 @@ export const ZENOH_CONFIG = {
   REST_BASE: import.meta.env.VITE_ZENOH_URL || 'https://zenoh.robbox.online',
   
   /**
+   * Домен ROS (обычно 0)
+   * Используется в путях: robots/{robot}/{domain}/{topic}
+   */
+  ROS_DOMAIN: '0',
+  
+  /**
    * Задержка перед попыткой переподключения (мс)
    */
   RECONNECT_DELAY: 5000,

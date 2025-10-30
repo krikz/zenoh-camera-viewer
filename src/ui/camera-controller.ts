@@ -27,12 +27,15 @@ export class CameraController {
   private startTop = 0;
   private startWidth = 0;
   private startHeight = 0;
+  private header: HTMLElement | null = null;
 
   constructor(
     private overlay: HTMLElement,
     private canvas: HTMLCanvasElement,
     private resizeHandle: HTMLElement
   ) {
+    // Находим заголовок камеры для перетаскивания
+    this.header = this.overlay.querySelector('.camera-header');
     this.loadPosition();
     this.setupEventListeners();
   }
@@ -86,8 +89,9 @@ export class CameraController {
    * Настраивает обработчики событий
    */
   private setupEventListeners(): void {
-    // Перетаскивание окна камеры
-    this.canvas.addEventListener('mousedown', this.onDragStart.bind(this));
+    // Перетаскивание окна камеры - используем заголовок если есть, иначе canvas
+    const dragTarget = this.header || this.canvas;
+    dragTarget.addEventListener('mousedown', this.onDragStart.bind(this));
     document.addEventListener('mousemove', this.onDragMove.bind(this));
     document.addEventListener('mouseup', this.onDragEnd.bind(this));
 
@@ -97,7 +101,7 @@ export class CameraController {
     document.addEventListener('mouseup', this.onResizeEnd.bind(this));
 
     // Touch events для мобильных устройств
-    this.canvas.addEventListener('touchstart', this.onTouchDragStart.bind(this));
+    dragTarget.addEventListener('touchstart', this.onTouchDragStart.bind(this));
     document.addEventListener('touchmove', this.onTouchDragMove.bind(this));
     document.addEventListener('touchend', this.onDragEnd.bind(this));
 
@@ -110,6 +114,12 @@ export class CameraController {
 
   private onDragStart(e: MouseEvent): void {
     if (this.isResizing) return;
+    
+    // Игнорируем клики на select и других интерактивных элементах
+    const target = e.target as HTMLElement;
+    if (target.tagName === 'SELECT' || target.tagName === 'OPTION' || target.tagName === 'INPUT' || target.tagName === 'BUTTON') {
+      return;
+    }
     
     this.isDragging = true;
     this.startX = e.clientX;

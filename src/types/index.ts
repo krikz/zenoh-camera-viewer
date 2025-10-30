@@ -4,6 +4,7 @@
 
 export * from './common';
 export * from './ros-messages';
+export * from './robot-config';
 
 /**
  * Внутренние типы приложения
