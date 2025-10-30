@@ -76,15 +76,70 @@ let mapToOdom: Transform = {
 // ==================== Message Handlers ====================
 
 function handleCameraMessage(data: string): void {
-  const image = parseZenohMessage<Image>(data, imageSchema, CDR_LIMITS.IMAGE);
-  
-  if (!image || !isValidImage(image)) {
-    logger.error(LOG_CONFIG.PREFIXES.RENDERER, 'Некорректные данные камеры');
-    return;
-  }
+  try {
+    // Определяем тип сообщения по ключу
+    if (currentCameraTopic && currentCameraTopic.includes('/compressed')) {
+      // CompressedImage - данные напрямую в base64
+      handleCompressedImage(data);
+    } else {
+      // Обычный Image - парсим через CDR
+      const image = parseZenohMessage<Image>(data, imageSchema, CDR_LIMITS.IMAGE);
+      
+      if (!image || !isValidImage(image)) {
+        logger.error(LOG_CONFIG.PREFIXES.RENDERER, 'Некорректные данные камеры');
+        return;
+      }
 
-  statusEl.textContent = `🎥 ${image.width}x${image.height}, ${image.encoding}`;
-  cameraRenderer.render(image);
+      statusEl.textContent = `🎥 ${image.width}x${image.height}, ${image.encoding}`;
+      cameraRenderer.render(image);
+    }
+  } catch (err) {
+    logger.error(LOG_CONFIG.PREFIXES.RENDERER, 'Ошибка обработки камеры:', err);
+  }
+}
+
+function handleCompressedImage(data: string): void {
+  try {
+    // Парсим JSON из SSE
+    const parsed = JSON.parse(data);
+    const base64Data = parsed.value;
+    
+    if (!base64Data) {
+      logger.warn(LOG_CONFIG.PREFIXES.RENDERER, 'CompressedImage без данных');
+      return;
+    }
+
+    // Декодируем base64 в binary
+    const binaryString = atob(base64Data);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+
+    // Создаём blob и URL для изображения
+    const blob = new Blob([bytes], { type: 'image/jpeg' });
+    const imageUrl = URL.createObjectURL(blob);
+
+    // Отображаем изображение
+    const img = new Image();
+    img.onload = () => {
+      const ctx = cameraCanvas.getContext('2d');
+      if (ctx) {
+        cameraCanvas.width = img.width;
+        cameraCanvas.height = img.height;
+        ctx.drawImage(img, 0, 0);
+        statusEl.textContent = `🎥 ${img.width}x${img.height}, compressed`;
+      }
+      URL.revokeObjectURL(imageUrl);
+    };
+    img.onerror = () => {
+      logger.error(LOG_CONFIG.PREFIXES.RENDERER, 'Ошибка загрузки JPEG изображения');
+      URL.revokeObjectURL(imageUrl);
+    };
+    img.src = imageUrl;
+  } catch (err) {
+    logger.error(LOG_CONFIG.PREFIXES.RENDERER, 'Ошибка обработки CompressedImage:', err);
+  }
 }
 
 function handleMapMessage(data: string): void {

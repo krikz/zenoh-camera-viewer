@@ -8,7 +8,7 @@
         {
           "id": "rgb_compressed",
           "name": "RGB Camera (Compressed)",
-          "topic": "/camera/color/image_raw",
+          "topic": "camera/rgb/image_raw/compressed",
           "encoding": "compressed",
           "default": true
         },
