@@ -27,6 +27,15 @@ export const imageSchema = dictionary({
 });
 
 /**
+ * sensor_msgs/CompressedImage
+ */
+export const compressedImageSchema = dictionary({
+  header: field(0, headerSchema),
+  format: field(1, baseTypes.string),
+  data: field(2, sequence(baseTypes.uint8)),
+});
+
+/**
  * sensor_msgs/LaserScan
  */
 export const laserScanSchema = dictionary({

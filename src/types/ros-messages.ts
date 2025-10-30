@@ -18,6 +18,15 @@ export interface Image {
 }
 
 /**
+ * sensor_msgs/CompressedImage
+ */
+export interface CompressedImage {
+  header: Header;
+  format: string;
+  data: number[];
+}
+
+/**
  * sensor_msgs/LaserScan
  */
 export interface LaserScan {

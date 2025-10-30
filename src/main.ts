@@ -7,8 +7,8 @@ import { ZenohClient, robotConfigService } from './services';
 import { MapRenderer, CameraRenderer, LidarRenderer } from './renderers';
 import { CameraController, GamepadController } from './ui';
 import { parseZenohMessage, logger, isValidImage, isValidOccupancyGrid, isValidLaserScan, isValidOdometry, isValidPath, isValidTFMessage, transformOdomToMap } from './utils';
-import { imageSchema, laserScanSchema, occupancyGridSchema, odometrySchema, pathSchema, tfMessageSchema } from './schemas';
-import type { Image, LaserScan, OccupancyGrid, Odometry, Path, TFMessage, RobotPosition, Transform } from './types';
+import { imageSchema, compressedImageSchema, laserScanSchema, occupancyGridSchema, odometrySchema, pathSchema, tfMessageSchema } from './schemas';
+import type { Image, CompressedImage, LaserScan, OccupancyGrid, Odometry, Path, TFMessage, RobotPosition, Transform } from './types';
 import { CDR_LIMITS, LOG_CONFIG } from './config';
 
 // ==================== DOM Elements ====================
@@ -100,21 +100,19 @@ function handleCameraMessage(data: string): void {
 
 function handleCompressedImage(data: string): void {
   try {
-    // Парсим JSON из SSE
-    const parsed = JSON.parse(data);
-    const base64Data = parsed.value;
+    // Парсим CompressedImage через CDR
+    const compressedImage = parseZenohMessage<CompressedImage>(data, compressedImageSchema, CDR_LIMITS.IMAGE);
     
-    if (!base64Data) {
+    if (!compressedImage || !compressedImage.data || compressedImage.data.length === 0) {
       logger.warn(LOG_CONFIG.PREFIXES.RENDERER, 'CompressedImage без данных');
       return;
     }
 
-    // Декодируем base64 в binary
-    const binaryString = atob(base64Data);
-    const bytes = new Uint8Array(binaryString.length);
-    for (let i = 0; i < binaryString.length; i++) {
-      bytes[i] = binaryString.charCodeAt(i);
-    }
+    // Конвертируем массив чисел в Uint8Array
+    const bytes = new Uint8Array(compressedImage.data);
+    
+    logger.debug(LOG_CONFIG.PREFIXES.RENDERER, `CompressedImage формат: ${compressedImage.format}, размер: ${bytes.length} байт`);
+    logger.debug(LOG_CONFIG.PREFIXES.RENDERER, `Первые байты: ${bytes[0].toString(16)} ${bytes[1].toString(16)} ${bytes[2].toString(16)} ${bytes[3].toString(16)}`);
 
     // Создаём blob и URL для изображения
     const blob = new Blob([bytes], { type: 'image/jpeg' });
@@ -128,7 +126,7 @@ function handleCompressedImage(data: string): void {
         cameraCanvas.width = img.width;
         cameraCanvas.height = img.height;
         ctx.drawImage(img, 0, 0);
-        statusEl.textContent = `🎥 ${img.width}x${img.height}, compressed`;
+        statusEl.textContent = `🎥 ${img.width}x${img.height}, ${compressedImage.format}`;
       }
       URL.revokeObjectURL(imageUrl);
     };
