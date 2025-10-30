@@ -134,6 +134,58 @@ class FeedManager<T> {
  */
 export class ZenohClient {
   private feeds = new Map<string, FeedManager<any>>();
+  private robotFeed: EventSource | null = null;
+  private currentRobotName: string = '';
+  private unifiedMessageHandler: ((event: MessageEvent) => void) | null = null;
+
+  /**
+   * Подписывается на робота целиком (все топики)
+   * Это единственная SSE подписка на robots/{robotName}/**
+   */
+  subscribeToRobot(
+    robotName: string,
+    messageHandler: (key: string, data: string) => void
+  ): void {
+    // Закрываем предыдущую подписку если есть
+    this.unsubscribeRobot();
+
+    this.currentRobotName = robotName;
+    
+    // Единственный SSE на всего робота
+    const keyExpr = `robots/${robotName}/**`;
+    const url = `${ZENOH_CONFIG.REST_BASE}/${keyExpr}`;
+
+    logger.debug(LOG_CONFIG.PREFIXES.ZENOH, `Подключение к ${url}`);
+
+    this.robotFeed = new EventSource(url);
+
+    this.robotFeed.addEventListener('open', () => {
+      logger.info(LOG_CONFIG.PREFIXES.ZENOH, `Подключено к роботу ${robotName} (unified feed)`);
+    });
+
+    this.robotFeed.addEventListener('error', (err) => {
+      logger.error(LOG_CONFIG.PREFIXES.ZENOH, `Ошибка SSE робота ${robotName}:`, err);
+      
+      if (this.robotFeed?.readyState === EventSource.CLOSED) {
+        this.robotFeed = null;
+      }
+    });
+
+    // Создаём обработчик один раз
+    this.unifiedMessageHandler = (event: MessageEvent) => {
+      try {
+        const sample = JSON.parse(event.data) as { key: string; value: string };
+        if (sample.key && sample.value) {
+          // Передаём ключ и данные в роутер
+          messageHandler(sample.key, sample.value);
+        }
+      } catch (err) {
+        logger.error(LOG_CONFIG.PREFIXES.ZENOH, 'Ошибка парсинга unified сообщения:', err);
+      }
+    };
+
+    this.robotFeed.addEventListener('PUT', this.unifiedMessageHandler);
+  }
 
   /**
    * Получает список роботов
@@ -286,9 +338,19 @@ export class ZenohClient {
   /**
    * Отписывается от всех топиков робота
    */
-  unsubscribeRobot(robotName: string): void {
+  unsubscribeRobot(): void {
+    if (this.robotFeed) {
+      if (this.unifiedMessageHandler) {
+        this.robotFeed.removeEventListener('PUT', this.unifiedMessageHandler);
+        this.unifiedMessageHandler = null;
+      }
+      this.robotFeed.close();
+      this.robotFeed = null;
+    }
+    
+    // Очищаем старые подписки если были
     const feedIds = Array.from(this.feeds.keys()).filter((id) =>
-      id.startsWith(`${robotName}/`)
+      id.startsWith(`${this.currentRobotName}/`)
     );
     
     for (const feedId of feedIds) {

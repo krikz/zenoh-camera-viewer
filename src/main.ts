@@ -283,8 +283,7 @@ async function loadCameraTopics(robotId: string): Promise<void> {
  */
 function connectToCamera(topic: string): void {
   // Отключаемся от предыдущей камеры
-  if (currentCameraTopic && currentRobotName) {
-    zenohClient.unsubscribe(`${currentRobotName}/${currentCameraTopic}`);
+  if (currentCameraTopic) {
     cameraRenderer.clear();
   }
 
@@ -295,8 +294,8 @@ function connectToCamera(topic: string): void {
 
   currentCameraTopic = topic;
   
-  // Подписываемся на новую камеру
-  zenohClient.subscribe(currentRobotName, topic, handleCameraMessage);
+  // Камера уже подписана через unified feed, просто сохраняем выбор
+  // Роутинг происходит в connectToRobot() где проверяется currentCameraTopic
   
   logger.info(LOG_CONFIG.PREFIXES.ZENOH, `Подключено к камере: ${topic}`);
 }
@@ -304,7 +303,7 @@ function connectToCamera(topic: string): void {
 function connectToRobot(robotId: string): void {
   // Отключаемся от предыдущего робота
   if (currentRobotName) {
-    zenohClient.unsubscribeRobot(currentRobotName);
+    zenohClient.unsubscribeRobot();
     mapRenderer.clear();
     lidarRenderer.clear();
     cameraRenderer.clear();
@@ -328,19 +327,35 @@ function connectToRobot(robotId: string): void {
   
   statusEl.textContent = `📡 Подключение к ${robotConfig.name}...`;
 
-  // Подписываемся на топики из конфигурации (кроме камеры - её выбирает пользователь)
-  const topics = robotConfig.topics;
-  zenohClient.subscribe(robotId, topics.map, handleMapMessage);
-  zenohClient.subscribe(robotId, topics.lidar, handleLidarMessage);
-  zenohClient.subscribe(robotId, topics.odometry, handleOdometryMessage);
-  zenohClient.subscribe(robotId, topics.tf, handleTfMessage);
-  zenohClient.subscribe(robotId, topics.plan, handlePlanMessage);
-  
-  // Подписываемся на логи робота для проверки соединения
-  zenohClient.subscribe(robotId, 'rosout', handleRosoutMessage);
+  // ========== ЕДИНАЯ ПОДПИСКА НА РОБОТА ==========
+  // Подписываемся на robots/${robotId}/** и роутим сообщения по ключам
+  zenohClient.subscribeToRobot(robotId, (key: string, value: string) => {
+    // Роутинг сообщений по ключу
+    const data = JSON.stringify({ value }); // Формируем data как ожидают обработчики
+    
+    // Проверяем какой топик
+    if (key.includes('/map/')) {
+      handleMapMessage(data);
+    } else if (key.includes('/scan/')) {
+      handleLidarMessage(data);
+    } else if (key.includes('/odom/') || key.includes('/odometry/')) {
+      handleOdometryMessage(data);
+    } else if (key.includes('/tf/')) {
+      handleTfMessage(data);
+    } else if (key.includes('/plan/')) {
+      handlePlanMessage(data);
+    } else if (key.includes('/rosout/')) {
+      handleRosoutMessage(data);
+    } else if (key.includes('/camera/') && key.includes('/image')) {
+      // Камера только если выбрана
+      if (currentCameraTopic && key.includes(currentCameraTopic)) {
+        handleCameraMessage(data);
+      }
+    }
+  });
 
   statusEl.textContent = `✅ Подключено к ${robotConfig.name}`;
-  logger.info(LOG_CONFIG.PREFIXES.ZENOH, `Подключено к роботу ${robotConfig.name}`, topics);
+  logger.info(LOG_CONFIG.PREFIXES.ZENOH, `Подключено к роботу ${robotConfig.name} (unified feed)`);
   
   // Загружаем доступные топики камер
   loadCameraTopics(robotId);
@@ -354,7 +369,7 @@ robotSelect.addEventListener('change', () => {
     connectToRobot(robotName);
   } else {
     if (currentRobotName) {
-      zenohClient.unsubscribeRobot(currentRobotName);
+      zenohClient.unsubscribeRobot();
       currentRobotName = '';
       currentCameraTopic = '';
     }
