@@ -57,9 +57,15 @@ if (gamepadBtn && gamepadOverlay && pitchIndicator && yawIndicator && robotVisua
   );
   
   // Устанавливаем callback для публикации команд
-  gamepadController.setPublishCallback(async (_topic: string, _data: Uint8Array) => {
-    // TODO: Реализовать публикацию в Zenoh
-    // await zenohClient.publish(currentRobotName, topic, data);
+  gamepadController.setPublishCallback(async (topic: string, data: Uint8Array) => {
+    try {
+      if (currentRobotName) {
+        await zenohClient.publish(currentRobotName, topic, data);
+        logger.info(LOG_CONFIG.PREFIXES.GAMEPAD, `Команда отправлена: ${topic}`);
+      }
+    } catch (err) {
+      logger.error(LOG_CONFIG.PREFIXES.GAMEPAD, 'Ошибка отправки команды:', err);
+    }
   });
 }
 

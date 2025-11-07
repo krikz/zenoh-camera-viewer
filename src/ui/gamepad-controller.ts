@@ -2,9 +2,8 @@
  * Управление геймпадом для управления роботом
  */
 
-import { GAMEPAD_CONFIG, LOG_CONFIG } from '../config';
-import { logger } from '../utils/logger';
-import type { Twist } from '../types';
+import { GAMEPAD_CONFIG, LOG_CONFIG, ROS_TOPICS } from '../config';
+import { logger, serializeTwist } from '../utils';
 
 export class GamepadController {
   private connected = false;
@@ -68,6 +67,7 @@ export class GamepadController {
 
     // Кнопка подключения/отключения
     this.button.addEventListener('click', () => {
+      logger.info(LOG_CONFIG.PREFIXES.GAMEPAD, `Кнопка нажата. Connected: ${this.connected}`);
       if (this.connected) {
         this.disconnect();
       } else {
@@ -90,9 +90,11 @@ export class GamepadController {
           LOG_CONFIG.PREFIXES.GAMEPAD,
           `Обнаружен подключенный геймпад: ${gamepads[i]!.id}`
         );
-        // Обновляем UI чтобы показать, что геймпад доступен
-        this.button.textContent = '🎮 Геймпад обнаружен - нажмите для активации';
-        this.button.style.backgroundColor = '#4CAF50';
+        // АВТОМАТИЧЕСКИ ПОДКЛЮЧАЕМ ГЕЙМПАД!
+        if (!this.connected) {
+          logger.info(LOG_CONFIG.PREFIXES.GAMEPAD, 'Автоподключение обнаруженного геймпада...');
+          this.connect();
+        }
         break;
       }
     }
@@ -102,12 +104,15 @@ export class GamepadController {
    * Подключает геймпад
    */
   private connect(): void {
+    logger.info(LOG_CONFIG.PREFIXES.GAMEPAD, '🔍 Начинаем подключение...');
     const gamepads = navigator.getGamepads();
+    logger.info(LOG_CONFIG.PREFIXES.GAMEPAD, `📊 Найдено геймпадов: ${gamepads.length}`);
     let gamepad: Gamepad | null = null;
 
     for (let i = 0; i < gamepads.length; i++) {
       if (gamepads[i]) {
         gamepad = gamepads[i];
+        logger.info(LOG_CONFIG.PREFIXES.GAMEPAD, `✅ Геймпад ${i}: ${gamepad!.id}`);
         break;
       }
     }
@@ -121,6 +126,7 @@ export class GamepadController {
       return;
     }
 
+    logger.info(LOG_CONFIG.PREFIXES.GAMEPAD, '⏰ Запускаем опрос геймпада...');
     // Запускаем опрос геймпада
     if (this.intervalId) {
       clearInterval(this.intervalId);
@@ -339,28 +345,22 @@ export class GamepadController {
   }
 
   /**
-   * Публикует Twist сообщение
-   * TODO: Нужно реализовать энкодинг CDR для исходящих сообщений
-   * Сейчас только парсинг входящих работает через parseCDRBytes
+   * Публикует Twist сообщение через Zenoh
    */
   private publishTwist(linear: number, angular: number): void {
     if (!this.publishCallback || !this.currentRobotName) return;
 
     try {
-      const twist: Twist = {
-        linear: { x: linear, y: 0, z: 0 },
-        angular: { x: 0, y: 0, z: angular },
-      };
+      // Сериализуем Twist в CDR формат
+      const cdrBytes = serializeTwist(linear, angular);
+      
+      // Публикуем через callback
+      this.publishCallback(ROS_TOPICS.CMD_VEL, cdrBytes);
 
-      // Временно логируем, пока не реализован энкодинг
       logger.debug(
         LOG_CONFIG.PREFIXES.GAMEPAD,
         `Twist: linear=${linear.toFixed(2)}, angular=${angular.toFixed(2)}`
       );
-
-      // TODO: Реализовать encoding в CDR формат
-      // const cdrBytes = encodeCDRBytes(twist, twistSchema);
-      // this.publishCallback(ROS_TOPICS.CMD_VEL, cdrBytes);
     } catch (err) {
       logger.error(LOG_CONFIG.PREFIXES.GAMEPAD, 'Ошибка публикации Twist:', err);
     }
