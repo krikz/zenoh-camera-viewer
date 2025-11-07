@@ -27,7 +27,7 @@ const gamepadOverlay = document.querySelector('.gamepad-overlay') as HTMLElement
 const pitchIndicator = document.getElementById('pitchIndicator') as HTMLElement;
 const yawIndicator = document.getElementById('yawIndicator') as HTMLElement;
 const robotVisual = document.querySelector('.robot-visual') as HTMLElement;
-const robotCanvas = document.getElementById('robotCanvas') as HTMLCanvasElement;
+const robotCanvas = document.getElementById('robotVisualCanvas') as HTMLCanvasElement;
 
 // ==================== Renderers ====================
 const mapRenderer = new MapRenderer(mapCanvas);
