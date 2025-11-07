@@ -111,7 +111,7 @@ export const tfMessageSchema = dictionary({
 /**
  * geometry_msgs/PoseStamped (для Path)
  */
-const poseStampedItemSchema = dictionary({
+const poseStampedSchema = dictionary({
   pose: field(0, poseSchema),
   // header пропускаем в item для упрощения
 });
@@ -121,7 +121,23 @@ const poseStampedItemSchema = dictionary({
  */
 export const pathSchema = dictionary({
   header: field(0, headerSchema),
-  poses: field(1, sequence(poseStampedItemSchema)),
+  poses: field(1, sequence(poseStampedSchema)),
+});
+
+/**
+ * rcl_interfaces/Log
+ */
+export const logSchema = dictionary({
+  timestamp: field(0, dictionary({
+    sec: field(0, baseTypes.uint32),
+    nanosec: field(1, baseTypes.uint32),
+  })),
+  level: field(1, baseTypes.uint8),
+  name: field(2, baseTypes.string),
+  msg: field(3, baseTypes.string),
+  file: field(4, baseTypes.string),
+  function: field(5, baseTypes.string),
+  line: field(6, baseTypes.uint32),
 });
 
 /**

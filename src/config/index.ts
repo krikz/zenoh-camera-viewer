@@ -40,6 +40,7 @@ export const CDR_LIMITS = {
   ODOMETRY: 10_000,
   TF: 10_000,
   PATH: 10_000,
+  ROSOUT: 10_000,
   DEFAULT: 10_000,
 } as const;
 

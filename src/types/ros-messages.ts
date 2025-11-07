@@ -101,3 +101,16 @@ export interface Twist {
   linear: { x: number; y: number; z: number };
   angular: { x: number; y: number; z: number };
 }
+
+/**
+ * rcl_interfaces/Log
+ */
+export interface Log {
+  timestamp: { sec: number; nanosec: number };
+  level: number; // DEBUG=10, INFO=20, WARN=30, ERROR=40, FATAL=50
+  name: string;   // node name
+  msg: string;    // log message
+  file: string;   // source file
+  function: string;
+  line: number;
+}

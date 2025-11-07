@@ -7,8 +7,8 @@ import { ZenohClient, robotConfigService } from './services';
 import { MapRenderer, CameraRenderer, LidarRenderer } from './renderers';
 import { CameraController, GamepadController } from './ui';
 import { parseZenohMessage, logger, isValidImage, isValidOccupancyGrid, isValidLaserScan, isValidOdometry, isValidPath, isValidTFMessage, transformOdomToMap } from './utils';
-import { imageSchema, compressedImageSchema, laserScanSchema, occupancyGridSchema, odometrySchema, pathSchema, tfMessageSchema } from './schemas';
-import type { Image, CompressedImage, LaserScan, OccupancyGrid, Odometry, Path, TFMessage, RobotPosition, Transform } from './types';
+import { imageSchema, compressedImageSchema, laserScanSchema, occupancyGridSchema, odometrySchema, pathSchema, tfMessageSchema, logSchema } from './schemas';
+import type { Image, CompressedImage, LaserScan, OccupancyGrid, Odometry, Path, TFMessage, Log, RobotPosition, Transform } from './types';
 import { CDR_LIMITS, LOG_CONFIG } from './config';
 
 // ==================== DOM Elements ====================
@@ -240,13 +240,43 @@ function handlePlanMessage(data: string): void {
 }
 
 function handleRosoutMessage(data: string): void {
-  try {
-    // Логи приходят в сыром виде, просто выводим их в консоль
-    // Можно попробовать распарсить как JSON или CDR, пока просто логируем
-    logger.info(LOG_CONFIG.PREFIXES.ZENOH, '📋 [Robot Log]', data.substring(0, 500));
-  } catch (err) {
-    logger.error(LOG_CONFIG.PREFIXES.ZENOH, 'Ошибка обработки rosout:', err);
+  const log = parseZenohMessage<Log>(data, logSchema, CDR_LIMITS.ROSOUT);
+
+  if (!log) {
+    // Парсинг не удался — логируем raw для диагностики
+    logger.warn(LOG_CONFIG.PREFIXES.ZENOH, 'Невозможно распарсить rosout сообщение, raw data:', data);
+    return;
   }
+
+  // Форматируем уровень лога с иконкой (делаем безопасно на случай отсутствия поля)
+  const levelIcons: Record<number, string> = {
+    10: '🐛', // DEBUG
+    20: 'ℹ️', // INFO
+    30: '⚠️', // WARN
+    40: '❌', // ERROR
+    50: '💥', // FATAL
+  };
+
+  const levelNum = typeof log.level === 'number' ? log.level : (Number(log.level) || 20);
+  const icon = levelIcons[levelNum] || '📋';
+
+  // Безопасно обрабатываем timestamp (может отсутствовать)
+  let timeStr = new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  if (log.timestamp && typeof log.timestamp.sec === 'number') {
+    const ts = new Date(log.timestamp.sec * 1000 + (log.timestamp.nanosec || 0) / 1e6);
+    timeStr = ts.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  }
+
+  // Безопасно читаем другие поля
+  const name = typeof log.name === 'string' ? log.name : 'rosout';
+  const msg = typeof log.msg === 'string' ? log.msg : JSON.stringify(log);
+
+  // Выбираем функцию логирования по уровню
+  const logFn = levelNum >= 40 ? logger.error : levelNum >= 30 ? logger.warn : logger.info;
+  logFn(
+    LOG_CONFIG.PREFIXES.ZENOH,
+    `${icon} [${timeStr}] [${name}] ${msg}`
+  );
 }
 
 // ==================== Robot Management ====================
