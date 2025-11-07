@@ -1,3 +1,4 @@
+/// <reference types="vite/client" />
 /**
  * Конфигурация приложения
  * Все настройки и константы в одном месте
@@ -117,6 +118,24 @@ export const GAMEPAD_CONFIG = {
   MAX_ANGULAR_SPEED: 1.0,     // рад/с
   
   /**
+   * Настройки ARM (включение подачи команд)
+   * BUTTON_INDEX соответствует номеру кнопки/канала (0-based)
+   * MODE: 'toggle' — переключение по нажатию, 'hold' — команды идут пока кнопка зажата
+   * START_ARMED: true чтобы геймпад был активен сразу после подключения
+   */
+  ARM: {
+    AXIS_INDEX: 4,         // номер оси (0-based), например CH5 -> ось 4
+    THRESHOLD: 0.5,        // абсолютное значение для активации (|axis| >= THRESHOLD)
+    LATCH: true as const,  // true: фиксация (toggle) по переходу через порог; false: hold по порогу
+    START_ARMED: false,    // стартовать сразу в ARM
+  },
+
+  /**
+   * Минимальное изменение скорости, при котором отправляем новую команду
+   */
+  COMMAND_EPSILON: 0.01,
+
+  /**
    * Маппинг осей геймпада
    * Стандартные значения для Xbox/PS контроллеров:
    * - PITCH_AXIS: 1 (левый стик Y - вперед/назад)
@@ -152,7 +171,7 @@ export const ROS_TOPICS = {
   ODOMETRY: 'diff_drive_base_controller/odom',
   TF: 'tf',
   PLAN: 'plan',
-  CMD_VEL: 'cmd_vel_web',
+  CMD_VEL: '0/cmd_vel_web',
   NAVIGATE_TO_POSE: 'navigate_to_pose/_action/send_goal',
 } as const;
 

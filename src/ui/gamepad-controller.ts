@@ -8,8 +8,17 @@ import { logger, serializeTwist } from '../utils';
 export class GamepadController {
   private connected = false;
   private intervalId: number | null = null;
+  private gamepadIndex: number | null = null;
   private currentRobotName = '';
   private publishCallback: ((topic: string, data: Uint8Array) => Promise<void>) | null = null;
+  private armed: boolean = GAMEPAD_CONFIG.ARM.START_ARMED;
+  private lastLinear = 0;
+  private lastAngular = 0;
+  private readonly commandEpsilon = GAMEPAD_CONFIG.COMMAND_EPSILON;
+  // Предыдущее состояние оси ARM (для режима LATCH)
+  private prevArmAxisActive = false;
+  // Сохранение прошлого состояния ARM для отправки стоп-команды при дизарме
+  private prevArmed: boolean = GAMEPAD_CONFIG.ARM.START_ARMED;
 
   constructor(
     private button: HTMLButtonElement,
@@ -80,6 +89,31 @@ export class GamepadController {
   }
 
   /**
+   * Обновляет визуальное состояние кнопки и оверлея
+   */
+  private updateUIState(): void {
+    if (!this.connected) {
+      this.button.classList.remove('connected');
+      this.button.textContent = '🎮 Connect Gamepad';
+      this.button.style.backgroundColor = '#2196F3';
+      return;
+    }
+
+    this.button.classList.add('connected');
+    this.button.textContent = this.armed
+      ? '⏹ Отключить геймпад (ARM ON)'
+      : '⏹ Отключить геймпад (ARM OFF)';
+    this.button.style.backgroundColor = this.armed ? '#f44336' : '#FF9800';
+
+    if (this.overlay) {
+      this.overlay.style.opacity = this.armed ? '1' : '0.7';
+      this.overlay.style.outline = this.armed
+        ? '2px solid #4CAF50'
+        : '2px dashed rgba(255, 255, 255, 0.5)';
+    }
+  }
+
+  /**
    * Проверяет уже подключенные геймпады при инициализации
    */
   private checkExistingGamepads(): void {
@@ -112,6 +146,7 @@ export class GamepadController {
     for (let i = 0; i < gamepads.length; i++) {
       if (gamepads[i]) {
         gamepad = gamepads[i];
+        this.gamepadIndex = i;
         logger.info(LOG_CONFIG.PREFIXES.GAMEPAD, `✅ Геймпад ${i}: ${gamepad!.id}`);
         break;
       }
@@ -134,16 +169,38 @@ export class GamepadController {
 
     this.intervalId = window.setInterval(() => this.poll(), GAMEPAD_CONFIG.POLL_INTERVAL);
     this.connected = true;
+  this.armed = GAMEPAD_CONFIG.ARM.START_ARMED;
+    this.lastLinear = 0;
+    this.lastAngular = 0;
+
+    // Инициализируем состояние ARM оси, чтобы избежать ложного переключения сразу после подключения
+    try {
+      const armAxisIndex = GAMEPAD_CONFIG.ARM.AXIS_INDEX;
+      const initialArmAxisValue = gamepad.axes[armAxisIndex] ?? 0;
+      const armThreshold = GAMEPAD_CONFIG.ARM.THRESHOLD;
+      this.prevArmAxisActive = initialArmAxisValue <= -armThreshold;
+      this.prevArmed = this.armed;
+      logger.debug(
+        LOG_CONFIG.PREFIXES.GAMEPAD,
+        `ARM init: axis[${armAxisIndex}]=${initialArmAxisValue.toFixed(2)} active=${this.prevArmAxisActive}`
+      );
+    } catch { /* ignore */ }
 
     // Обновляем UI
-    this.button.classList.add('connected');
-    this.button.textContent = '⏹ Отключить геймпад';
-    this.button.style.backgroundColor = '#f44336';
     this.overlay.style.display = 'block';
     this.robotVisual.style.display = 'block';
+    this.updateUIState();
 
     logger.info(LOG_CONFIG.PREFIXES.GAMEPAD, `✅ Геймпад активирован: ${gamepad.id}`);
-    logger.info(LOG_CONFIG.PREFIXES.GAMEPAD, `📊 Осей: ${gamepad.axes.length}, Кнопок: ${gamepad.buttons.length}`);
+    logger.info(
+      LOG_CONFIG.PREFIXES.GAMEPAD,
+      `📊 Осей: ${gamepad.axes.length}, Кнопок: ${gamepad.buttons.length}`
+    );
+    if (!this.armed) {
+      logger.info(LOG_CONFIG.PREFIXES.GAMEPAD, '⚠️ Команды не отправляются — ARM выключен');
+    } else {
+      logger.info(LOG_CONFIG.PREFIXES.GAMEPAD, '🚀 ARM включён автоматически');
+    }
   }
 
   /**
@@ -156,14 +213,17 @@ export class GamepadController {
     }
 
     // Отправляем команду остановки
-    this.publishTwist(0, 0);
+    this.publishTwist(0, 0, true); // force-stop независимо от ARM
 
     // Обновляем UI
     this.connected = false;
-    this.button.classList.remove('connected');
-    this.button.textContent = '🎮 Connect Gamepad';
+  this.armed = GAMEPAD_CONFIG.ARM.START_ARMED;
+    this.gamepadIndex = null;
+    this.lastLinear = 0;
+    this.lastAngular = 0;
     this.overlay.style.display = 'none';
     this.robotVisual.style.display = 'none';
+    this.updateUIState();
 
     logger.info(LOG_CONFIG.PREFIXES.GAMEPAD, 'Геймпад отключен');
   }
@@ -173,13 +233,65 @@ export class GamepadController {
    */
   private poll(): void {
     const gamepads = navigator.getGamepads();
-    if (gamepads.length === 0 || !gamepads[0]) {
+    const idx = this.gamepadIndex ?? 0;
+    const gp = gamepads[idx];
+    if (gamepads.length === 0 || !gp) {
       logger.warn(LOG_CONFIG.PREFIXES.GAMEPAD, 'Геймпад потерян, отключение...');
       this.disconnect();
       return;
     }
+    const gamepad = gp;
 
-    const gamepad = gamepads[0];
+    // === ARM управление через ось ===
+    const armAxisIndex = GAMEPAD_CONFIG.ARM.AXIS_INDEX;
+    const armThreshold = GAMEPAD_CONFIG.ARM.THRESHOLD;
+    if (armAxisIndex >= gamepad.axes.length) {
+      logger.warn(
+        LOG_CONFIG.PREFIXES.GAMEPAD,
+        `ARM ось ${armAxisIndex} отсутствует (доступно осей: ${gamepad.axes.length}). Проверьте конфиг.`
+      );
+      // Без валидной оси не управляем ARM, просто продолжаем визуализацию
+      return;
+    }
+    const armAxisValue = gamepad.axes[armAxisIndex] ?? 0;
+    // ARM активен когда ось < -threshold (т.е. -1.0 при threshold=0.5)
+    const armAxisActive = armAxisValue <= -armThreshold;
+
+    if (GAMEPAD_CONFIG.ARM.LATCH) {
+      // Режим фиксации: переключение при ЛЮБОМ пересечении порога (туда и обратно)
+      if (armAxisActive !== this.prevArmAxisActive) {
+        // Состояние оси изменилось — синхронизируем armed с состоянием оси
+        this.armed = armAxisActive;
+        this.updateUIState();
+        logger.info(
+          LOG_CONFIG.PREFIXES.GAMEPAD,
+          this.armed
+            ? `🔥 ARM включён (ось ${armAxisIndex} = ${armAxisValue.toFixed(2)})`
+            : `🧊 ARM выключен (ось ${armAxisIndex} = ${armAxisValue.toFixed(2)})`
+        );
+        if (!this.armed) {
+          // При выключении отправляем стоп (force)
+          this.publishTwist(0, 0, true);
+        }
+      }
+      this.prevArmAxisActive = armAxisActive;
+    } else {
+      // Режим удержания: активен пока ось за порогом
+      this.armed = armAxisActive;
+      if (this.armed !== this.prevArmed) {
+        this.updateUIState();
+        logger.info(
+          LOG_CONFIG.PREFIXES.GAMEPAD,
+          this.armed
+            ? `🚀 ARM активирован удержанием (ось ${armAxisIndex} = ${armAxisValue.toFixed(2)})`
+            : `🛑 ARM деактивирован (ось ${armAxisIndex} = ${armAxisValue.toFixed(2)})`
+        );
+        if (!this.armed) {
+          this.publishTwist(0, 0, true);
+        }
+      }
+    }
+    this.prevArmed = this.armed;
 
     // Получаем значения осей из конфигурации
     const pitch = gamepad.axes[GAMEPAD_CONFIG.PITCH_AXIS]; // По умолчанию: ось 1
@@ -192,9 +304,14 @@ export class GamepadController {
     // Обновляем визуализацию
     this.updateVisualization(pitchValue, yawValue);
 
-    // Если оба значения в мертвой зоне - останавливаем
+    // Если ARM выключен — не отправляем команды (кроме force stop при переходе)
+    if (!this.armed) {
+      return; // безопасно игнорируем ввод
+    }
+
+    // Если оба значения в мертвой зоне - отправляем единичный стоп (с учетом epsilon)
     if (pitchValue === 0 && yawValue === 0) {
-      this.publishTwist(0, 0);
+      this.publishTwist(0, 0); // не force — будет подавлено если уже нули
       return;
     }
 
@@ -347,19 +464,29 @@ export class GamepadController {
   /**
    * Публикует Twist сообщение через Zenoh
    */
-  private publishTwist(linear: number, angular: number): void {
+  private publishTwist(linear: number, angular: number, force = false): void {
     if (!this.publishCallback || !this.currentRobotName) return;
+    // Блокировка если не ARM (кроме force-stop)
+    if (!this.armed && !force) return;
+
+    // Подавление повторов (epsilon)
+    if (!force) {
+      const dLinear = Math.abs(linear - this.lastLinear);
+      const dAngular = Math.abs(angular - this.lastAngular);
+      if (dLinear < this.commandEpsilon && dAngular < this.commandEpsilon) {
+        return; // изменения слишком малы
+      }
+    }
 
     try {
-      // Сериализуем Twist в CDR формат
       const cdrBytes = serializeTwist(linear, angular);
-      
-      // Публикуем через callback
       this.publishCallback(ROS_TOPICS.CMD_VEL, cdrBytes);
-
+      this.lastLinear = linear;
+      this.lastAngular = angular;
+  // помечать отправку больше не требуется
       logger.debug(
         LOG_CONFIG.PREFIXES.GAMEPAD,
-        `Twist: linear=${linear.toFixed(2)}, angular=${angular.toFixed(2)}`
+        `Twist${force ? ' (force)' : ''}: linear=${linear.toFixed(2)}, angular=${angular.toFixed(2)}`
       );
     } catch (err) {
       logger.error(LOG_CONFIG.PREFIXES.GAMEPAD, 'Ошибка публикации Twist:', err);
