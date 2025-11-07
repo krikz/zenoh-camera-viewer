@@ -25,7 +25,7 @@
         "odometry": "rtabmap/odom",
         "tf": "tf",
         "plan": "plan",
-        "cmd_vel": "cmd_vel"
+        "cmd_vel": "cmd_vel_web"
       }
     }
   ]

@@ -152,7 +152,7 @@ export const ROS_TOPICS = {
   ODOMETRY: 'diff_drive_base_controller/odom',
   TF: 'tf',
   PLAN: 'plan',
-  CMD_VEL: 'cmd_vel',
+  CMD_VEL: 'cmd_vel_web',
   NAVIGATE_TO_POSE: 'navigate_to_pose/_action/send_goal',
 } as const;
 
