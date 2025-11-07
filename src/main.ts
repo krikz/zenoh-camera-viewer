@@ -271,12 +271,16 @@ function handleRosoutMessage(data: string): void {
   const name = typeof log.name === 'string' ? log.name : 'rosout';
   const msg = typeof log.msg === 'string' ? log.msg : JSON.stringify(log);
 
+  const message = `${icon} [${timeStr}] [${name}] ${msg}`;
+
   // Выбираем функцию логирования по уровню
-  const logFn = levelNum >= 40 ? logger.error : levelNum >= 30 ? logger.warn : logger.info;
-  logFn(
-    LOG_CONFIG.PREFIXES.ZENOH,
-    `${icon} [${timeStr}] [${name}] ${msg}`
-  );
+  if (levelNum >= 40) {
+    logger.error(LOG_CONFIG.PREFIXES.ZENOH, message);
+  } else if (levelNum >= 30) {
+    logger.warn(LOG_CONFIG.PREFIXES.ZENOH, message);
+  } else {
+    logger.info(LOG_CONFIG.PREFIXES.ZENOH, message);
+  }
 }
 
 // ==================== Robot Management ====================
